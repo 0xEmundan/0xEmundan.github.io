@@ -1,0 +1,36 @@
+---
+import '../styles/global.css'
+const { title } = Astro.props
+const path = Astro.url.pathname
+---
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>{title} | emundans</title>
+  <meta name="description" content="Blog cybersécurité — HTB writeups, CTF, pentest par emundans (Léo Barber)" />
+</head>
+<body>
+
+  <nav style="border-bottom:1px solid rgba(0,255,157,0.15); padding:1rem 1.5rem; display:flex; justify-content:space-between; align-items:center; position:sticky; top:0; background:rgba(10,10,15,0.97); backdrop-filter:blur(8px); z-index:50;">
+    <a href="/" style="color:var(--cyber); font-weight:700; font-size:1.1rem; letter-spacing:0.05em;">
+      <span style="color:#e2e8f0;">~/</span>emundans
+    </a>
+    <div style="display:flex; gap:1.5rem;">
+      <a href="/writeups" class={"nav-link" + (path.startsWith('/writeups') ? ' active' : '')}>writeups</a>
+      <a href="/about"    class={"nav-link" + (path === '/about' ? ' active' : '')}>about</a>
+      <a href="/cheatsheet" class={"nav-link" + (path === '/cheatsheet' ? ' active' : '')}>cheatsheet</a>
+    </div>
+  </nav>
+
+  <main style="max-width:920px; margin:0 auto; padding:3rem 1.5rem;">
+    <slot />
+  </main>
+
+  <footer style="border-top:1px solid rgba(0,255,157,0.08); text-align:center; padding:1.5rem; color:#334155; font-size:0.75rem; margin-top:4rem;">
+    emundans · <span style="color:var(--cyber);">HTB Pro Hacker</span> · ENSIBS 2025 · <a href="mailto:leo_barber@protonmail.com" style="color:#475569;">leo_barber@protonmail.com</a>
+  </footer>
+
+</body>
+</html>

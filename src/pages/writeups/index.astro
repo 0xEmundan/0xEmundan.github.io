@@ -1,0 +1,77 @@
+---
+import Layout from '../../layouts/Layout.astro'
+
+const writeups = [
+  { slug:'htb-cobblestone', title:'HTB - Cobblestone', diff:'Insane', os:'Linux',   date:'18 Apr 2026', tags:['SQLi','Second-Order SQLi','XSS','SSTI Twig','Cobbler CVE-2024-47533'],   color:'#8b0000', cls:'badge-insane' },
+  { slug:'htb-garfield',    title:'HTB - Garfield',    diff:'Hard',   os:'Windows', date:'07 Apr 2026', tags:['RODC','Kerberos','KeyList Attack','RBCD','Ligolo-ng'],                     color:'#c0392b', cls:'badge-hard'   },
+  { slug:'htb-nanocorp',    title:'HTB - NanoCorp',    diff:'Hard',   os:'Windows', date:'08 Nov 2025', tags:['CVE-2025-24071','NTLM Hash Leak','ADCS','Active Directory'],               color:'#c0392b', cls:'badge-hard'   },
+  { slug:'htb-logging',     title:'HTB - Logging',     diff:'Medium', os:'Windows', date:'21 Apr 2026', tags:['gMSA','Shadow Credentials','ADCS ESC17','WSUS Rogue','ADIDNS'],           color:'#e67e22', cls:'badge-medium' },
+  { slug:'htb-overwatch',   title:'HTB - Overwatch',   diff:'Medium', os:'Windows', date:'24 Jan 2026', tags:['MSSQL','ADIDNS Poisoning','Responder','WCF','Linked Server'],              color:'#e67e22', cls:'badge-medium' },
+  { slug:'htb-pterodactyl', title:'HTB - Pterodactyl', diff:'Medium', os:'Linux',   date:'07 Feb 2026', tags:['CVE-2025-49132','LFI','pearcmd.php','CVE-2025-6018','udisks2'],           color:'#e67e22', cls:'badge-medium' },
+  { slug:'htb-devarea',     title:'HTB - DevArea',     diff:'Medium', os:'Linux',   date:'28 Mar 2026', tags:['CVE-2022-46364','XXE SOAP','Hoverfly CVE-2024-45388','Bash Hijack'],      color:'#e67e22', cls:'badge-medium' },
+  { slug:'htb-variatype',   title:'HTB - VariaType',   diff:'Medium', os:'Linux',   date:'14 Mar 2026', tags:['Git Exposed','.git dump','LFI bypass','CVE-2025-66034','CVE-2025-47273'],  color:'#e67e22', cls:'badge-medium' },
+  { slug:'htb-interpreter', title:'HTB - Interpreter', diff:'Medium', os:'Linux',   date:'21 Feb 2026', tags:['CVE-2023-43208','Mirth Connect','PBKDF2','f-string injection','SUID'],    color:'#e67e22', cls:'badge-medium' },
+  { slug:'htb-kobold',      title:'HTB - Kobold',      diff:'Easy',   os:'Linux',   date:'28 Mar 2026', tags:['CVE-2026-23520','Arcane MCP RCE','PrivateBin LFI','Docker Group'],        color:'#27ae60', cls:'badge-easy'   },
+  { slug:'htb-wingdata',    title:'HTB - WingData',    diff:'Easy',   os:'Linux',   date:'14 Feb 2026', tags:['CVE-2025-47812','Wing FTP Null Byte RCE','Hashcat','TarSlip'],             color:'#27ae60', cls:'badge-easy'   },
+  { slug:'htb-facts',       title:'HTB - Facts',       diff:'Easy',   os:'Linux',   date:'31 Jan 2026', tags:['CVE-2025-2304','Cameleon CMS','AWS S3','ssh2john','facter sudo'],          color:'#27ae60', cls:'badge-easy'   },
+  { slug:'htb-monitorsfour',title:'HTB - MonitorsFour',diff:'Easy',   os:'Windows', date:'06 Dec 2025', tags:['IDOR','Cacti CVE-2025-24367','Docker Desktop CVE-2025-9074','WSL2'],      color:'#27ae60', cls:'badge-easy'   },
+  { slug:'ctf-ether-tag',   title:'CTF - Ether Tag',   diff:'CTF',    os:'ICS',     date:'01 Apr 2026', tags:['EtherNet/IP','CIP','RegisterSession','ReadTag','DINT Array','Rockwell'],  color:'#6366f1', cls:'badge-ctf'    },
+]
+---
+
+<Layout title="Writeups">
+  <div style="margin-bottom:2.5rem;">
+    <div style="color:#334155; font-size:0.8rem; margin-bottom:0.5rem;">$ ls -la ./writeups</div>
+    <h1 style="font-size:2rem; font-weight:700; color:#e2e8f0; margin-bottom:0.25rem;">Writeups</h1>
+    <p style="color:#475569; font-size:0.85rem;">{writeups.length} writeups · HackTheBox & CTF · Flags obfusqués</p>
+  </div>
+
+  <div style="display:flex; flex-wrap:wrap; gap:0.5rem; margin-bottom:2rem;" id="filters">
+    <button class="filter-btn active" data-filter="Tous">Tous ({writeups.length})</button>
+    <button class="filter-btn" data-filter="Insane">Insane (1)</button>
+    <button class="filter-btn" data-filter="Hard">Hard (2)</button>
+    <button class="filter-btn" data-filter="Medium">Medium (6)</button>
+    <button class="filter-btn" data-filter="Easy">Easy (4)</button>
+    <button class="filter-btn" data-filter="CTF">CTF (1)</button>
+  </div>
+
+  <div style="display:flex; flex-direction:column; gap:0.75rem;" id="writeup-list">
+    {writeups.map(w => (
+      <a
+        href={'/writeups/' + w.slug}
+        data-diff={w.diff}
+        class="card writeup-card"
+        style="display:flex; align-items:center; justify-content:space-between;"
+      >
+        <div style="display:flex; align-items:center; gap:1rem;">
+          <div style={"width:3px; height:3.5rem; border-radius:9999px; flex-shrink:0; background:" + w.color}></div>
+          <div>
+            <div style="color:#e2e8f0; font-weight:600; font-size:0.9rem;">{w.title}</div>
+            <div style="color:#475569; font-size:0.72rem; margin-top:0.25rem;">{w.os} · {w.tags.slice(0,4).join(' · ')}{w.tags.length > 4 ? ' ...' : ''}</div>
+            <div style="color:#334155; font-size:0.68rem; margin-top:0.15rem;">{w.date}</div>
+          </div>
+        </div>
+        <div style="display:flex; align-items:center; gap:0.75rem; flex-shrink:0;">
+          <span class={w.cls}>{w.diff}</span>
+          <span style="color:#334155; font-size:1rem;">→</span>
+        </div>
+      </a>
+    ))}
+  </div>
+</Layout>
+
+<script>
+  const buttons = document.querySelectorAll('.filter-btn')
+  const cards   = document.querySelectorAll('.writeup-card')
+  buttons.forEach(btn => {
+    btn.addEventListener('click', () => {
+      const filter = btn.getAttribute('data-filter')
+      buttons.forEach(b => b.classList.remove('active'))
+      btn.classList.add('active')
+      cards.forEach(card => {
+        const show = filter === 'Tous' || card.getAttribute('data-diff') === filter
+        card.style.display = show ? 'flex' : 'none'
+      })
+    })
+  })
+</script>

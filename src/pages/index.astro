@@ -1,0 +1,93 @@
+---
+import Layout from '../layouts/Layout.astro'
+---
+<Layout title="Home">
+
+  <!-- HERO -->
+  <div style="margin-bottom:4rem;">
+    <div style="color:#334155; font-size:0.8rem; margin-bottom:0.5rem; font-family:monospace;">$ whoami</div>
+    <h1 style="font-size:2.5rem; font-weight:700; margin-bottom:0.75rem; line-height:1.2;">
+      <span style="color:var(--cyber);">emundans</span>
+      <span style="color:#64748b; font-size:1.5rem;"> ~ Léo Barber</span>
+    </h1>
+    <p style="color:#94a3b8; font-size:1rem; margin-bottom:1.5rem;">
+      Cybersecurity & Software Engineer · ENSIBS · France 🇫🇷
+    </p>
+    <div style="display:inline-flex; align-items:center; gap:0.6rem; border:1px solid rgba(0,255,157,0.3); background:rgba(0,255,157,0.05); padding:0.5rem 1.1rem; border-radius:9999px; font-size:0.82rem; color:var(--cyber);">
+      <span class="pulse"></span>
+      Disponible — Recherche d'emploi en cybersécurité
+    </div>
+  </div>
+
+  <!-- STATS -->
+  <div style="display:grid; grid-template-columns:repeat(4,1fr); gap:1rem; margin-bottom:4rem;">
+    {[
+      { val: 'Pro Hacker', label: 'HTB Grade'    },
+      { val: '#3377',      label: 'Season Rank'  },
+      { val: '17',         label: 'Machines HTB' },
+      { val: 'Top 3%',     label: 'TryHackMe'    },
+    ].map(s => (
+      <div class="stat-card">
+        <div style="color:var(--cyber); font-size:1.1rem; font-weight:700;">{s.val}</div>
+        <div style="color:#475569; font-size:0.7rem; margin-top:0.25rem;">{s.label}</div>
+      </div>
+    ))}
+  </div>
+
+  <!-- DERNIERS WRITEUPS -->
+  <div style="margin-bottom:4rem;">
+    <div style="color:#334155; font-size:0.8rem; margin-bottom:1rem;">$ ls ./writeups | tail -5</div>
+    <div style="display:flex; flex-direction:column; gap:0.75rem;">
+      {[
+        { href:'/writeups/htb-cobblestone', title:'HTB - Cobblestone', diff:'Insane', os:'Linux',   tags:['SQLi','XSS','SSTI','Cobbler'],  color:'#8b0000', cls:'badge-insane' },
+        { href:'/writeups/htb-garfield',    title:'HTB - Garfield',    diff:'Hard',   os:'Windows', tags:['RODC','Kerberos','KeyList'],     color:'#c0392b', cls:'badge-hard'   },
+        { href:'/writeups/htb-logging',     title:'HTB - Logging',     diff:'Medium', os:'Windows', tags:['gMSA','WSUS','ADCS'],            color:'#e67e22', cls:'badge-medium' },
+        { href:'/writeups/htb-pterodactyl', title:'HTB - Pterodactyl', diff:'Medium', os:'Linux',   tags:['LFI','pearcmd','udisks2'],       color:'#e67e22', cls:'badge-medium' },
+        { href:'/writeups/htb-kobold',      title:'HTB - Kobold',      diff:'Easy',   os:'Linux',   tags:['Docker','CVE-2026-23520','MCP'], color:'#27ae60', cls:'badge-easy'   },
+      ].map(w => (
+        <a href={w.href} class="card" style="display:flex; align-items:center; justify-content:space-between;">
+          <div style="display:flex; align-items:center; gap:1rem;">
+            <div style={"width:3px; height:3rem; border-radius:9999px; flex-shrink:0; background:" + w.color}></div>
+            <div>
+              <div style="color:#e2e8f0; font-weight:600; font-size:0.88rem;">{w.title}</div>
+              <div style="color:#475569; font-size:0.72rem; margin-top:0.2rem;">{w.os} · {w.tags.join(' · ')}</div>
+            </div>
+          </div>
+          <span class={w.cls}>{w.diff}</span>
+        </a>
+      ))}
+    </div>
+    <div style="text-align:right; margin-top:1rem;">
+      <a href="/writeups" style="color:var(--cyber); font-size:0.85rem;">voir tous les writeups →</a>
+    </div>
+  </div>
+
+  <!-- PROFILS -->
+  <div style="margin-bottom:4rem;">
+    <div style="color:#334155; font-size:0.8rem; margin-bottom:1rem;">$ cat ./profiles</div>
+    <div style="display:flex; flex-wrap:wrap; gap:0.75rem;">
+      <a href="https://app.hackthebox.com/users/3081403" target="_blank" style="padding:0.5rem 1.2rem; border-radius:8px; font-size:0.82rem; font-weight:700; background:rgba(159,239,0,0.08); color:#9fef00; border:1px solid rgba(159,239,0,0.2);">🟠 HackTheBox</a>
+      <a href="https://tryhackme.com/p/0xEmundans" target="_blank" style="padding:0.5rem 1.2rem; border-radius:8px; font-size:0.82rem; font-weight:700; background:rgba(29,185,84,0.08); color:#4ade80; border:1px solid rgba(29,185,84,0.2);">🟢 TryHackMe</a>
+      <a href="https://www.root-me.org/Emundans" target="_blank" style="padding:0.5rem 1.2rem; border-radius:8px; font-size:0.82rem; font-weight:700; background:rgba(231,76,60,0.08); color:#f87171; border:1px solid rgba(231,76,60,0.2);">🔴 Root-Me</a>
+      <a href="https://www.linkedin.com/in/leo-barber-04577b3a1/" target="_blank" style="padding:0.5rem 1.2rem; border-radius:8px; font-size:0.82rem; font-weight:700; background:rgba(0,119,181,0.08); color:#60a5fa; border:1px solid rgba(0,119,181,0.2);">💼 LinkedIn</a>
+    </div>
+  </div>
+
+  <!-- WIDGETS HTB / THM -->
+  <div>
+    <div style="color:#334155; font-size:0.8rem; margin-bottom:1rem;">$ cat ./stats</div>
+    <div style="display:grid; grid-template-columns:1fr 1fr; gap:1rem;">
+      <div class="htb-widget">
+        <a href="https://app.hackthebox.com/users/3081403" target="_blank">
+          <img src="https://www.hackthebox.com/badge/image/3081403" alt="HackTheBox Badge" />
+        </a>
+      </div>
+      <div class="htb-widget">
+        <a href="https://tryhackme.com/p/0xEmundans" target="_blank">
+          <img src="https://tryhackme-badges.s3.amazonaws.com/0xEmundans.png" alt="TryHackMe Badge" />
+        </a>
+      </div>
+    </div>
+  </div>
+
+</Layout>

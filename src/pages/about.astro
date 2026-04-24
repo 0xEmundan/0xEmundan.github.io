@@ -1,0 +1,230 @@
+---
+import Layout from '../layouts/Layout.astro'
+---
+<Layout title="About">
+
+<div style="margin-bottom:2rem;">
+  <div style="color:#334155; font-size:0.8rem; margin-bottom:0.5rem;">$ cat ./about.md</div>
+  <h1 style="font-size:2rem; font-weight:700; color:#e2e8f0;">À propos</h1>
+</div>
+
+<!-- HERO CARD -->
+<div style="background:var(--bg-800); border:1px solid rgba(0,255,157,0.25); border-radius:10px; padding:1.5rem; margin-bottom:3rem; display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:1rem;">
+  <div>
+    <h2 style="font-size:1.4rem; font-weight:700; color:#e2e8f0; margin-bottom:0.25rem;">Léo Barber <span style="color:var(--cyber);">// emundans</span></h2>
+    <p style="color:#94a3b8; font-size:0.9rem; margin-bottom:1rem;">Cybersecurity & Software Engineer · ENSIBS · France 🇫🇷</p>
+    <div style="display:flex; align-items:center; gap:0.5rem; color:var(--cyber); font-size:0.82rem; margin-bottom:1rem;">
+      <span class="pulse"></span> Disponible — Recherche d'emploi en cybersécurité
+    </div>
+    <div style="display:flex; flex-wrap:wrap; gap:0.5rem;">
+      <a href="https://app.hackthebox.com/users/3081403" target="_blank" style="padding:4px 12px; border-radius:6px; font-size:0.78rem; font-weight:700; background:rgba(159,239,0,0.08); color:#9fef00; border:1px solid rgba(159,239,0,0.2);">HTB</a>
+      <a href="https://tryhackme.com/p/0xEmundans" target="_blank" style="padding:4px 12px; border-radius:6px; font-size:0.78rem; font-weight:700; background:rgba(29,185,84,0.08); color:#4ade80; border:1px solid rgba(29,185,84,0.2);">TryHackMe</a>
+      <a href="https://www.root-me.org/Emundans" target="_blank" style="padding:4px 12px; border-radius:6px; font-size:0.78rem; font-weight:700; background:rgba(231,76,60,0.08); color:#f87171; border:1px solid rgba(231,76,60,0.2);">Root-Me</a>
+      <a href="https://www.linkedin.com/in/leo-barber-04577b3a1/" target="_blank" style="padding:4px 12px; border-radius:6px; font-size:0.78rem; font-weight:700; background:rgba(0,119,181,0.08); color:#60a5fa; border:1px solid rgba(0,119,181,0.2);">LinkedIn</a>
+      <a href="mailto:leo_barber@protonmail.com" style="padding:4px 12px; border-radius:6px; font-size:0.78rem; font-weight:700; background:rgba(100,100,100,0.08); color:#94a3b8; border:1px solid rgba(100,100,100,0.2);">✉️ Email</a>
+    </div>
+  </div>
+</div>
+
+<!-- WIDGETS -->
+<div class="about-section">
+  <h2>> Plateformes en temps réel</h2>
+  <div style="display:grid; grid-template-columns:1fr 1fr; gap:1rem; margin-bottom:1.5rem;">
+    <div class="platform-card">
+      <h3 style="color:#9fef00; font-size:0.9rem; margin-bottom:0.75rem;">🟠 HackTheBox</h3>
+      <a href="https://app.hackthebox.com/users/3081403" target="_blank">
+        <img src="https://www.hackthebox.com/badge/image/3081403" alt="HTB Badge" style="width:100%; border-radius:6px;" />
+      </a>
+    </div>
+    <div class="platform-card">
+      <h3 style="color:#4ade80; font-size:0.9rem; margin-bottom:0.75rem;">🟢 TryHackMe</h3>
+      <a href="https://tryhackme.com/p/0xEmundans" target="_blank">
+        <img src="https://tryhackme-badges.s3.amazonaws.com/0xEmundans.png" alt="THM Badge" style="width:100%; border-radius:6px;" />
+      </a>
+    </div>
+  </div>
+  <!-- ROOT-ME STATS -->
+  <div class="platform-card">
+    <h3 style="color:#f87171; font-size:0.9rem; margin-bottom:0.75rem;">🔴 Root-Me — <a href="https://www.root-me.org/Emundans" target="_blank" style="color:#f87171; text-decoration:underline;">Emundans</a></h3>
+    <div style="display:flex; gap:2rem; margin-bottom:1rem;">
+      {[{v:'#10401',l:'Classement'},{v:'1405',l:'Points'},{v:'84',l:'Challenges'},{v:'Top 3%',l:'Mondial'}].map(s=>(
+        <div style="text-align:center;">
+          <div style="color:var(--cyber); font-weight:700; font-size:1rem;">{s.v}</div>
+          <div style="color:#475569; font-size:0.7rem;">{s.l}</div>
+        </div>
+      ))}
+    </div>
+    <div style="display:flex; flex-wrap:wrap; gap:0.4rem;">
+      {['Web Client 79%','Stéganographie 33%','Cryptanalyse 32%','Forensique 26%','Web Serveur 15%','App Système 3%'].map(t=>(
+        <span class="skill-tag">{t}</span>
+      ))}
+    </div>
+  </div>
+</div>
+
+<!-- MACHINES HTB -->
+<div class="about-section">
+  <h2>> Machines HackTheBox (17)</h2>
+  <div style="display:flex; flex-wrap:wrap; gap:0.4rem;">
+    {[
+      {n:'Cobblestone', d:'Insane', c:'#8b0000', tc:'#ef4444'},
+      {n:'Garfield',    d:'Hard',   c:'#7f1d1d', tc:'#f87171'},
+      {n:'NanoCorp',    d:'Hard',   c:'#7f1d1d', tc:'#f87171'},
+      {n:'Logging',     d:'Medium', c:'#78350f', tc:'#fb923c'},
+      {n:'Overwatch',   d:'Medium', c:'#78350f', tc:'#fb923c'},
+      {n:'Pterodactyl', d:'Medium', c:'#78350f', tc:'#fb923c'},
+      {n:'DevArea',     d:'Medium', c:'#78350f', tc:'#fb923c'},
+      {n:'VariaType',   d:'Medium', c:'#78350f', tc:'#fb923c'},
+      {n:'Interpreter', d:'Medium', c:'#78350f', tc:'#fb923c'},
+      {n:'Silentium',   d:'Easy',   c:'#14532d', tc:'#4ade80'},
+      {n:'Kobold',      d:'Easy',   c:'#14532d', tc:'#4ade80'},
+      {n:'WingData',    d:'Easy',   c:'#14532d', tc:'#4ade80'},
+      {n:'Facts',       d:'Easy',   c:'#14532d', tc:'#4ade80'},
+      {n:'CCTV',        d:'Easy',   c:'#14532d', tc:'#4ade80'},
+      {n:'MonitorsFour',d:'Easy',   c:'#14532d', tc:'#4ade80'},
+      {n:'Eighteen',    d:'Easy',   c:'#14532d', tc:'#4ade80'},
+      {n:'Cap',         d:'Easy',   c:'#14532d', tc:'#4ade80'},
+    ].map(m=>(
+      <span class="machine-pill" style={"background:" + m.c + "33; color:" + m.tc + "; border:1px solid " + m.c + "66;"}>
+        {m.n} <span style="opacity:0.7; font-size:0.65rem;">· {m.d}</span>
+      </span>
+    ))}
+  </div>
+</div>
+
+<!-- FORMATION -->
+<div class="about-section">
+  <h2>> Formation</h2>
+  <div class="timeline">
+    {[
+      { date:'2022 – 2025', title:'Diplôme d\'Ingénieur Cybersécurité', org:'ENSIBS', desc:'École Nationale Supérieure d\'Informatique de Bretagne Sud · Cybersécurité du logiciel' },
+      { date:'2020 – 2022', title:'Classe Préparatoire TSI',           org:'Lycée Léonce Vieljeux', desc:'Mathématiques · Informatique · Sciences de l\'Ingénieur · Mobilité en Irlande' },
+      { date:'2017 – 2020', title:'BAC STI2D Mention Bien',            org:'Lycée Marcel Dassault', desc:'' },
+    ].map(f=>(
+      <div class="timeline-item">
+        <div style="color:#475569; font-size:0.75rem; margin-bottom:0.2rem;">{f.date}</div>
+        <div style="color:#e2e8f0; font-weight:600; font-size:0.9rem;">{f.title} — <span style="color:var(--cyber);">{f.org}</span></div>
+        {f.desc && <div style="color:#64748b; font-size:0.8rem; margin-top:0.2rem;">{f.desc}</div>}
+      </div>
+    ))}
+  </div>
+</div>
+
+<!-- EXPÉRIENCES -->
+<div class="about-section">
+  <h2>> Expériences</h2>
+  <div class="timeline">
+    <div class="timeline-item">
+      <div style="color:#475569; font-size:0.75rem; margin-bottom:0.2rem;">Fév 2025 – Août 2025</div>
+      <div style="color:#e2e8f0; font-weight:600; font-size:0.9rem;">Analyste CERT-CTI — <span style="color:var(--cyber);">XMCO</span></div>
+      <div style="color:#64748b; font-size:0.8rem; margin-top:0.3rem;">Cyber Threat Intelligence · OpenCTI · STIX 2.1 · MITRE ATT&CK · Analyse TTPs ransomware · Qualification victimes · Développement connecteurs Python · Veille cybersécurité</div>
+    </div>
+    <div class="timeline-item">
+      <div style="color:#475569; font-size:0.75rem; margin-bottom:0.2rem;">Mai 2024 – Août 2024</div>
+      <div style="color:#e2e8f0; font-weight:600; font-size:0.9rem;">Pentester & Durcissement produits — <span style="color:var(--cyber);">Atempo</span></div>
+      <div style="color:#64748b; font-size:0.8rem; margin-top:0.3rem;">Tests d'intrusion applicatif et système · Identification & exploitation de vulnérabilités · Rédaction de rapports techniques · Recommandations de remédiation</div>
+    </div>
+  </div>
+</div>
+
+<!-- COMPÉTENCES -->
+<div class="about-section">
+  <h2>> Compétences techniques</h2>
+  <div style="display:grid; grid-template-columns:1fr 1fr; gap:1rem;">
+    {[
+      { title:'🔴 Offensif', tags:['Pentest Web','SQLi / XSS / IDOR / SSRF','Command Injection','Race Conditions','Active Directory','Privilege Escalation','Kerberos Abuse','Metasploit','Burp Suite','Nmap / ffuf / gobuster','Hashcat / John','BloodHound','Nessus / Searchsploit'] },
+      { title:'🔵 Défensif / CTI', tags:['Threat Intelligence','OpenCTI','STIX 2.1','MITRE ATT&CK','ISO 27001','NIST CSF / SP 800-30','CIS Controls','EBIOS-RM','Splunk / QRadar','OSINT','IAM / IGA','WAF','CASB / CSPM'] },
+      { title:'🟡 Langages', tags:['Python / Flask (4/5)','SQL (4/5)','JavaScript / NodeJS (3.5/5)','Java (3/5)','Bash / PowerShell','C++ (2/5)','Lua (2/5)','Scala (2/5)'] },
+      { title:'⚙️ Infrastructure', tags:['Docker','Kubernetes','Ansible','Active Directory','Linux','Windows Server','Wireshark / tcpdump','DevSecOps','CI/CD','Blockchain / Web3'] },
+    ].map(cat=>(
+      <div style="background:var(--bg-800); border:1px solid var(--border); border-radius:8px; padding:1rem;">
+        <div style="font-size:0.88rem; font-weight:700; color:#e2e8f0; margin-bottom:0.75rem;">{cat.title}</div>
+        <div style="display:flex; flex-wrap:wrap; gap:0.35rem;">
+          {cat.tags.map(t=>(<span class="skill-tag">{t}</span>))}
+        </div>
+      </div>
+    ))}
+  </div>
+</div>
+
+<!-- LANGAGES AVEC BARRES -->
+<div class="about-section">
+  <h2>> Langages & Niveaux</h2>
+  <div style="display:grid; grid-template-columns:1fr 1fr; gap:0.6rem;">
+    {[
+      {n:'Python / Flask', p:80},
+      {n:'SQL',            p:80},
+      {n:'JavaScript',     p:70},
+      {n:'Java',           p:60},
+      {n:'Bash',           p:75},
+      {n:'C++',            p:40},
+      {n:'Lua',            p:40},
+      {n:'Scala',          p:40},
+    ].map(l=>(
+      <div style="display:flex; align-items:center; gap:0.75rem;">
+        <span style="width:130px; font-size:0.78rem; color:#94a3b8; flex-shrink:0;">{l.n}</span>
+        <div class="lang-bar">
+          <div class="lang-fill" style={"width:" + l.p + "%"}></div>
+        </div>
+        <span style="font-size:0.7rem; color:#475569; width:30px; text-align:right;">{l.p}%</span>
+      </div>
+    ))}
+  </div>
+</div>
+
+<!-- CERTIFICATIONS & CTF -->
+<div class="about-section">
+  <h2>> Certifications & CTF</h2>
+  <div style="display:grid; grid-template-columns:1fr 1fr; gap:1rem;">
+    <div style="background:var(--bg-800); border:1px solid var(--border); border-radius:8px; padding:1rem;">
+      <div style="font-size:0.88rem; font-weight:700; color:#e2e8f0; margin-bottom:0.75rem;">📜 Certifications</div>
+      {[
+        'TOEIC 950/990',
+        'Projet Voltaire — 504 pts',
+        'Jr Penetration Tester — TryHackMe (janv. 2026)',
+        'Web Fundamentals — TryHackMe (janv. 2026)',
+        'Cyber Security 101 — TryHackMe (déc. 2025)',
+        'AoC 2025 — TryHackMe',
+        'IS-800.d National Response Framework — FEMA',
+        'IS-706 NIMS Intrastate Mutual Aid — FEMA',
+        'IS-700.b NIMS Introduction — FEMA',
+        'IS-200.c Basic ICS — FEMA',
+        'IS-100.c Introduction to ICS — FEMA',
+      ].map(c=>(<div style="font-size:0.78rem; color:#94a3b8; padding:4px 0; border-bottom:1px solid #0f0f1a;">🏅 {c}</div>))}
+    </div>
+    <div style="background:var(--bg-800); border:1px solid var(--border); border-radius:8px; padding:1rem;">
+      <div style="font-size:0.88rem; font-weight:700; color:#e2e8f0; margin-bottom:0.75rem;">🚩 CTF & Compétitions</div>
+      {[
+        '🥇 Objectif Eagle (DGA) — 22e/229, 1ère équipe étudiante',
+        '🏴 BreizhCTF 2026',
+        '🏴 ECW Qualification 2024',
+        '🏴 HeroCTF 2024',
+        '🏴 TRACS 2024',
+        '🏴 Hackolyte (OSINT CTF)',
+        '🏴 OSINTOPIA — 515 pts',
+      ].map(c=>(<div style="font-size:0.78rem; color:#94a3b8; padding:4px 0; border-bottom:1px solid #0f0f1a;">{c}</div>))}
+    </div>
+  </div>
+</div>
+
+<!-- PROJETS ACADÉMIQUES -->
+<div class="about-section">
+  <h2>> Projets académiques</h2>
+  <div style="display:grid; grid-template-columns:1fr 1fr; gap:0.75rem;">
+    {[
+      { title:'🛡️ Antivirus Evasion', desc:'Techniques d\'évasion antivirus pour le Ministère des Armées français' },
+      { title:'🔒 Durcissement Debian', desc:'Durcissement complet selon le guide ANSSI' },
+      { title:'🧬 MasterMind IA', desc:'Algorithme génétique appliqué au jeu MasterMind' },
+      { title:'🏭 Maintenance intelligente', desc:'Système de maintenance sur 6 mois (ingénierie système)' },
+      { title:'🏦 SI centralisé UBS', desc:'Mise en place d\'un système d\'information centralisé' },
+      { title:'🎮 Projet IOT', desc:'Conception et réalisation d\'un jeu sur plateforme IOT' },
+    ].map(p=>(
+      <div style="background:var(--bg-800); border:1px solid var(--border); border-radius:8px; padding:0.9rem; transition:border-color 0.2s;" onmouseenter="this.style.borderColor='rgba(0,255,157,0.3)'" onmouseleave="this.style.borderColor='var(--border)'">
+        <div style="font-size:0.88rem; font-weight:700; color:#e2e8f0; margin-bottom:0.3rem;">{p.title}</div>
+        <div style="font-size:0.78rem; color:#64748b;">{p.desc}</div>
+      </div>
+    ))}
+  </div>
+</div>
+
+</Layout>

