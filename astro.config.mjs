@@ -5,7 +5,7 @@ import { defineConfig } from 'astro/config'
 import tailwindcss from '@tailwindcss/vite'
 
 export default defineConfig({
-  site: 'https://emundans.github.io',
+  site: 'https://0xEmundan.github.io',
   output: 'static',
   integrations: [mdx(), sitemap()],
   vite: {
