@@ -21,18 +21,41 @@ import Layout from '../layouts/Layout.astro'
 
   <!-- STATS -->
   <div style="display:grid; grid-template-columns:repeat(4,1fr); gap:1rem; margin-bottom:4rem;">
-    {[
-      { val: 'Pro Hacker', label: 'HTB Grade'    },
-      { val: '#3377',      label: 'Season Rank'  },
-      { val: '17',         label: 'Machines HTB' },
-      { val: 'Top 3%',     label: 'TryHackMe'    },
-    ].map(s => (
-      <div class="stat-card">
-        <div style="color:var(--cyber); font-size:1.1rem; font-weight:700;">{s.val}</div>
-        <div style="color:#475569; font-size:0.7rem; margin-top:0.25rem;">{s.label}</div>
-      </div>
-    ))}
+    <div class="stat-card">
+      <div id="stat-grade" style="color:var(--cyber); font-size:1.1rem; font-weight:700;">Pro Hacker</div>
+      <div style="color:#475569; font-size:0.7rem; margin-top:0.25rem;">HTB Grade</div>
+    </div>
+    <div class="stat-card">
+      <div id="stat-rank" style="color:var(--cyber); font-size:1.1rem; font-weight:700;">#3377</div>
+      <div style="color:#475569; font-size:0.7rem; margin-top:0.25rem;">Season Rank</div>
+    </div>
+    <div class="stat-card">
+      <div id="stat-machines" style="color:var(--cyber); font-size:1.1rem; font-weight:700;">17</div>
+      <div style="color:#475569; font-size:0.7rem; margin-top:0.25rem;">Machines HTB</div>
+    </div>
+    <div class="stat-card">
+      <div id="stat-thm" style="color:var(--cyber); font-size:1.1rem; font-weight:700;">Top 3%</div>
+      <div style="color:#475569; font-size:0.7rem; margin-top:0.25rem;">TryHackMe</div>
+    </div>
   </div>
+
+  <script>
+    fetch('https://www.hackthebox.com/api/v4/profile/3081403', {
+      headers: { 'Accept': 'application/json' }
+    })
+    .then(r => r.json())
+    .then(data => {
+      const p = data.profile
+      if (!p) return
+      const grade    = document.getElementById('stat-grade')
+      const rank     = document.getElementById('stat-rank')
+      const machines = document.getElementById('stat-machines')
+      if (grade    && p.rank)        grade.textContent    = p.rank
+      if (rank     && p.ranking)     rank.textContent     = '#' + p.ranking
+      if (machines && p.system_owns) machines.textContent = p.system_owns
+    })
+    .catch(() => {})
+  </script>
 
   <!-- DERNIERS WRITEUPS -->
   <div style="margin-bottom:4rem;">
@@ -89,5 +112,15 @@ import Layout from '../layouts/Layout.astro'
       </div>
     </div>
   </div>
-
+<script>
+  fetch('https://www.hackthebox.com/api/v4/profile/3081403')
+    .then(r => r.json())
+    .then(data => {
+      const p = data.profile
+      document.getElementById('stat-grade').textContent   = p.ranking?.name || 'Pro Hacker'
+      document.getElementById('stat-rank').textContent    = '#' + (p.ranking?.season_rank || '3377')
+      document.getElementById('stat-machines').textContent = p.system_owns || '17'
+    })
+    .catch(() => {}) // garde les valeurs par défaut si l'API échoue
+</script>
 </Layout>
